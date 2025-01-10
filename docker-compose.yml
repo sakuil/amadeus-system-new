@@ -1,0 +1,31 @@
+version: '3'
+services:
+  container:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3002"  # 服务端口
+    environment:
+      - VITE_AUTH_API_TOKEN=${VITE_AUTH_API_TOKEN}
+      - VITE_APP_DEFAULT_USERNAME=${VITE_APP_DEFAULT_USERNAME}
+      - VITE_APP_LOGIN_PASSWORD=${VITE_APP_LOGIN_PASSWORD}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_BASE_URL=${OPENAI_API_BASE_URL}
+      - OPENAI_API_MODEL=${OPENAI_API_MODEL}
+      - AI_PROMPT=${AI_PROMPT}
+      - TIMEOUT_MS=${TIMEOUT_MS:-60000}
+      - WebSearchKey=${WebSearchKey}
+      - FISH_AUDIO_TOKEN=${FISH_AUDIO_TOKEN}
+      - WHISPER_API_TOKEN=${WHISPER_API_TOKEN}
+      - WHISPER_API_ENDPOINT=${WHISPER_API_ENDPOINT}
+      - VOICE_ID=${VOICE_ID}
+      - MEM_KEY=${MEM_KEY}
+    restart: unless-stopped
+    networks:
+      - amadeus-network
+    volumes:
+      - ./logs:/app/service/logs  # 如果需要持久化日志
+networks:
+  amadeus-network:
+    driver: bridge
