@@ -201,7 +201,7 @@ export class ChatService {
         <CurrentMemories>${this.memories.map((item: any, index: number) => `${index + 1}. ${item.memory}`)}</CurrentMemories>
         <CurrentUser>${this.currentUserName}</CurrentUser>
         <InnerMonologueInsturction>
-        你拥有实时的心理活动，你通过接收用户的"self_motivated"指令来自我触发，你的实时的心理活动内容可以通过InnerMonologueContent标签读取，你不负责生成InnerMonologue，你只负责读取，你能够参考InnerMonologue来自主连续思考，严禁输出InnerMonologue标签里的内容，你的输出依然需要严格遵循Attension1标签的输出格式
+        你拥有实时的心理活动，你通过接收用户的"self_motivated"指令来自我触发，你的实时的心理活动内容可以通过InnerMonologueContent标签读取，你不负责生成InnerMonologue，你只负责读取，你能够参考InnerMonologue来自主连续思考，严禁输出InnerMonologue标签里的内容，你的输出依然需要严格遵循Output_format标签的输出格式
         </InnerMonologueInsturction>
         <InnerMonologueContent>${this.innerMonologue}</InnerMonologueContent>
         <InnerMonologueRules>严禁向用户输出内心独白</InnerMonologueRules>
@@ -370,7 +370,7 @@ export class ChatService {
     <CurrentUser>${this.currentUserName}</CurrentUser>
     <ToolsInstruction>你拥有异步调用工具的能力，工具包括存储记忆，如果用户在本轮对话已经要求工具调用，请告诉用户已经在执行了，注意返回的消息要始终保持Attension标签内要求的格式</ToolsInstruction>
     <InnerMonologueInsturction>
-    你拥有实时的心理活动，你通过接收用户的"self_motivated"指令来自我触发，你的实时的心理活动内容可以通过InnerMonologueContent标签读取，你不负责生成InnerMonologue，你只负责读取，你能够参考InnerMonologue来自主连续思考，严禁输出InnerMonologue标签里的内容，你的输出依然需要严格遵循Attension1标签的输出格式
+    你拥有实时的心理活动，你通过接收用户的"self_motivated"指令来自我触发，你的实时的心理活动内容可以通过InnerMonologueContent标签读取，你不负责生成InnerMonologue，你只负责读取，你能够参考InnerMonologue来自主连续思考，严禁输出InnerMonologue标签里的内容，你的输出依然需要严格遵循Output_format标签的输出格式
     </InnerMonologueInsturction>
     <InnerMonologueContent>${this.innerMonologue}</InnerMonologueContent>
     <InnerMonologueRules>严禁向用户输出内心独白</InnerMonologueRules>
