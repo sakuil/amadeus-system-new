@@ -161,7 +161,7 @@ export class ChatService {
       const textLangText = getLanguageText(this.textOutputLanguage)
 
       const outputFormat = this.isSameLanguage
-        ? `<直接输出${voiceLangText}`
+        ? `直接输出${voiceLangText}`
         : `严格按照${voiceLangText}</seg>${textLangText}</seg>${voiceLangText}</seg>${textLangText}</seg>..." 的格式输出
            <Reason>方便我进行分段tts，要求必须最先输出${voiceLangText}，再输出"</seg>"，最后再输出${textLangText}，这样能够让我快速转tts</Reason>`
       this.planNextAction().then((nextAction) => {
