@@ -4,14 +4,20 @@ import * as dotenv from 'dotenv'
 import fetch from 'node-fetch'
 import FormData from 'form-data'
 import OpenAI from 'openai'
-import type { ChatCompletionMessageParam } from 'openai/resources/chat'
+import type {
+  ChatCompletionContentPartImage,
+  ChatCompletionContentPartText,
+  ChatCompletionMessageParam,
+  ChatCompletionUserMessageParam,
+} from 'openai/resources/chat'
 import type { WebSocket } from 'ws'
 import moment from 'moment'
-import { getUserMemories, storeMemory } from 'src/utils'
+import { getLanguageText, getUserMemories, storeMemory } from 'src/utils'
 
 dotenv.config()
 const OPENAI_API_BASE_URL = process.env.OPENAI_API_BASE_URL
 const apiKey = process.env.OPENAI_API_KEY
+
 export class ChatService {
   private conversationHistory: Array<ChatCompletionMessageParam> = []
   private audioQueue: Promise<void> = Promise.resolve()
@@ -21,6 +27,8 @@ export class ChatService {
     baseURL: `${OPENAI_API_BASE_URL}/v1`,
   })
 
+  private voiceOutputLanguage: string
+  private textOutputLanguage: string
   private nextAction = 'continue_topic'
   private videoFrames: string[] = []
   private innerMonologue = ''
@@ -28,7 +36,8 @@ export class ChatService {
   private lastMonologueTime = 0
   private currentUserName = ''
   private systemPrompt: string = process.env.AI_PROMPT || ''
-  private ToolsInfo = []
+  private isSameLanguage = false
+  private isStop = false
   private memories = []
   private shortTermMemory: {
     lastUserActivity?: number
@@ -51,6 +60,12 @@ export class ChatService {
       timestamp: 0,
       used: true,
     }
+
+  constructor() {
+    this.voiceOutputLanguage = process.env.VOICE_OUTPUT_LANGUAGE || 'ja'
+    this.textOutputLanguage = process.env.TEXT_OUTPUT_LANGUAGE || 'zh'
+    this.isSameLanguage = this.voiceOutputLanguage === this.textOutputLanguage
+  }
 
   private bufferToStream(buffer: Buffer): Readable {
     return Readable.from(buffer)
@@ -83,12 +98,14 @@ export class ChatService {
           lastMonologue: this.lastInnerMonologue,
         },
       }
-      const stream = await this.openai.beta.chat.completions.stream({
-        model: process.env.OPENAI_API_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: `<Instruction>你是能够完全还原任何人的情感，性格，记忆的强大AI系统Amadeus，你可以精准还原目标人物的情感，记忆，你现在是这个系的人物内心独白生成器部分。
+      const conversationHistory = this.conversationHistory.slice(1)
+      if (conversationHistory.length > 0) {
+        const stream = await this.openai.beta.chat.completions.stream({
+          model: process.env.OPENAI_API_MODEL,
+          messages: [
+            {
+              role: 'system',
+              content: `<Instruction>你是能够完全还原任何人的情感，性格，记忆的强大AI系统Amadeus，你可以精准还原目标人物的情感，记忆，你现在是这个系的人物内心独白生成器部分。
             <Personality>${this.systemPrompt}</Personality>
             <CurrentUser>${this.currentUserName}</CurrentUser>
             <CurrentMemories>${this.memories.map((item: any, index: number) => `${index + 1}. ${item.memory}`)}</CurrentMemories>
@@ -114,22 +131,23 @@ export class ChatService {
                - 对用户的主动关心
             </Attention4>
             </Instruction>`,
-          },
-          ...this.conversationHistory.slice(1),
-          {
-            role: 'user',
-            content: JSON.stringify(selfMotivatedMessage),
-          },
-        ],
-        temperature: 1.0,
-        max_tokens: 150,
-        stream: true,
-      })
+            },
+            ...this.conversationHistory.slice(1),
+            {
+              role: 'user',
+              content: JSON.stringify(selfMotivatedMessage),
+            },
+          ],
+          temperature: 1.0,
+          max_tokens: 150,
+          stream: true,
+        })
 
-      const newMonologue = await stream.finalContent()
-      this.lastInnerMonologue = this.innerMonologue
-      this.innerMonologue = newMonologue
-      this.lastMonologueTime = now
+        const newMonologue = await stream.finalContent()
+        this.lastInnerMonologue = this.innerMonologue
+        this.innerMonologue = newMonologue
+        this.lastMonologueTime = now
+      }
     }
     catch (error) {
       console.error('生成内心独白时出错:', error)
@@ -139,7 +157,13 @@ export class ChatService {
   private async generateSelfMotivatedCache() {
     try {
       const now = Date.now()
+      const voiceLangText = getLanguageText(this.voiceOutputLanguage)
+      const textLangText = getLanguageText(this.textOutputLanguage)
 
+      const outputFormat = this.isSameLanguage
+        ? `<直接输出${voiceLangText}`
+        : `严格按照 "${voiceLangText}</seg>${textLangText}" 的格式输出
+           <Reason>方便我进行分段tts，要求必须最先输出${voiceLangText}，再输出"</seg>"，最后再输出${textLangText}，这样能够让我快速转tts</Reason>`
       this.planNextAction().then((nextAction) => {
         this.nextAction = nextAction
       })
@@ -173,9 +197,7 @@ export class ChatService {
         - 建议你的行动：${this.nextAction}
         </ConversationContext>
         <Output_style>回复风格表现得接近一个真实的人类，要根据当前情境自然地引导对话</Output_style>
-        <Output_format>严格按照 "日文</seg>相同含义的中文</seg>日文</seg>相同含义的中文</seg>..." 的格式输出
-        <Reason>方便我进行分段tts，要求必须最先输出日文，再输出"</seg>"，最后再输出中文，这样能够让我快速转tts</Reason>
-        </Output_format>
+        <Output_format>${outputFormat}</Output_format>
         <CurrentMemories>${this.memories.map((item: any, index: number) => `${index + 1}. ${item.memory}`)}</CurrentMemories>
         <CurrentUser>${this.currentUserName}</CurrentUser>
         <InnerMonologueInsturction>
@@ -185,54 +207,68 @@ export class ChatService {
         <InnerMonologueRules>严禁向用户输出内心独白</InnerMonologueRules>
         <CurrentTime>${moment().format('YYYY-MM-DD HH:mm:ss')}</CurrentTime>
         </Instruction>`
+      if (Array.isArray(this.conversationHistory)) {
+        const stream = await this.openai.beta.chat.completions.stream({
+          model: process.env.OPENAI_API_MODEL,
+          messages: [
+            {
+              role: 'system',
+              content: enhancedSystemPrompt,
+            },
+            ...this.conversationHistory,
+            {
+              role: 'user',
+              content: messageContent,
+            },
+          ],
+          temperature: 0.5,
+          max_tokens: 1000,
+          stream: true,
+        })
 
-      const stream = await this.openai.beta.chat.completions.stream({
-        model: process.env.OPENAI_API_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: enhancedSystemPrompt,
-          },
-          ...this.conversationHistory,
-          {
-            role: 'user',
-            content: messageContent,
-          },
-        ],
-        temperature: 0.5,
-        max_tokens: 1000,
-        stream: true,
-      })
+        const response = await stream.finalContent()
+        if (!this.isSameLanguage) {
+          const parts = response.split('</seg>')
 
-      const response = await stream.finalContent()
-      const parts = response.split('</seg>')
+          const foreignTexts: string[] = []
+          const chineseTexts: string[] = []
 
-      const foreignTexts: string[] = []
-      const chineseTexts: string[] = []
+          for (let i = 0; i < parts.length; i++) {
+            if (i % 2 === 0)
+              foreignTexts.push(parts[i].trim())
+            else
+              chineseTexts.push(parts[i].trim())
+          }
 
-      for (let i = 0; i < parts.length; i++) {
-        if (i % 2 === 0)
-          foreignTexts.push(parts[i].trim())
-        else
-          chineseTexts.push(parts[i].trim())
-      }
-
-      if (foreignTexts.length === 0 || chineseTexts.length === 0)
-        throw new Error('Response format error: missing Japanese or Chinese text')
-
-      const foreignText = foreignTexts.join('')
-      const chineseText = chineseTexts.join('')
-
-      const emotion = await this.predictEmotion(foreignText)
-
-      this.cachedSelfMotivated = {
-        text: {
-          foreign: foreignText,
-          chinese: chineseText,
-        },
-        emotion,
-        timestamp: now,
-        used: false,
+          if (foreignTexts.length === 0 || chineseTexts.length === 0)
+            throw new Error('Response format error: missing Japanese or Chinese text')
+          const foreignText = foreignTexts.join('')
+          const chineseText = chineseTexts.join('')
+          const emotion = await this.predictEmotion(foreignText)
+          this.cachedSelfMotivated = {
+            text: {
+              foreign: foreignText,
+              chinese: chineseText,
+            },
+            emotion,
+            timestamp: now,
+            used: false,
+          }
+        }
+        else {
+          if (response.length) {
+            const emotion = await this.predictEmotion(response)
+            this.cachedSelfMotivated = {
+              text: {
+                foreign: response,
+                chinese: response,
+              },
+              emotion,
+              timestamp: now,
+              used: false,
+            }
+          }
+        }
       }
     }
     catch (error) {
@@ -250,27 +286,34 @@ export class ChatService {
   }
 
   stopAudioStream() {
-    if (this.currentAudioStream) {
-      this.currentAudioStream.emit('end')
-      this.currentAudioStream = null
+    try {
+      if (this.currentAudioStream) {
+        this.isStop = true
+        this.currentAudioStream?.emit?.('end')
+        this.currentAudioStream?.removeAllListeners?.()
+        this.currentAudioStream?.destroy?.()
+        this.currentAudioStream = null
+      }
+      this.audioQueue = Promise.resolve()
     }
-    this.audioQueue = Promise.resolve()
+    catch (error) {
+      console.error('停止音频流时出错:', error)
+    }
   }
 
   async handleChat(message: string, ws: WebSocket, videoFrames?: string[]) {
     this.shortTermMemory.lastUserActivity = Date.now()
     this.audioQueue = Promise.resolve()
     this.videoFrames = videoFrames || []
+    this.isStop = false
     const MAX_HISTORY_LENGTH = 30
     if (this.conversationHistory.length > MAX_HISTORY_LENGTH)
       this.conversationHistory = this.conversationHistory.slice(-MAX_HISTORY_LENGTH)
-    this.toolCalls().then((toolsInfo) => {
-      this.ToolsInfo.push(toolsInfo)
-    })
+    this.generateInnerMonologue()
+    this.toolCalls()
     getUserMemories(this.currentUserName).then((memories) => {
       this.memories = (memories || []).slice(-20)
     })
-    this.generateInnerMonologue()
     if (message.includes('self_motivated') && this.cachedSelfMotivated?.timestamp !== 0) {
       if (this.isCacheValid()) {
         const { text, emotion } = this.cachedSelfMotivated
@@ -306,15 +349,20 @@ export class ChatService {
     let currentBuffer = ''
     let isForeign = true
     let chineseResponse = ''
+    const voiceLangText = getLanguageText(this.voiceOutputLanguage)
+    const textLangText = getLanguageText(this.textOutputLanguage)
+
+    const outputFormat = this.isSameLanguage
+      ? `直接输出${voiceLangText}`
+      : `严格按照 "${voiceLangText}</seg>${textLangText}" 的格式输出
+         <Reason>方便我进行分段tts，要求必须最先输出${voiceLangText}，再输出"</seg>"，最后再输出${textLangText}，这样能够让我快速转tts</Reason>`
+
     const finalPrompt = `<Instruction>你是够完全还原任何人的情感，性格，记忆的强大AI系统Amadeus，你可以精准还原目标人物的情感，记忆，以及对话风格
     <Personality>${this.systemPrompt}</Personality>
     <Output_style>回复风格表现得接近一个真实的人类</Output_style>
-    <Output_format>严格按照 "日文</seg>相同含义的中文</seg>日文</seg>相同含义的中文</seg>..." 的格式输出
-    <Reason>方便我进行分段tts，要求必须最先输出日文，再输出"</seg>"，最后再输出中文，这样能够让我快速转tts</Reason>
-    </Output_format>
+    <Output_format>${outputFormat}</Output_format>
     <Attention1>
-    记住以下人物中英文名称映射:牧濑红莉栖(kurisu)，冈部伦太郎(okabe)，椎名真由理(mayuri)，比屋定真帆(maho)，阿万音铃羽(suzuha)，漆原琉华(Urushibara Ruka),桶子(daru)，雷斯吉宁(Leskinen)，桐生萌郁(Kiriyu Moeka),菲利斯(Faris NyanNyan)，天王寺裕吾(Mr.Braun)，椎名篝(Kagari)，绹(Tennouji nae)，阿万音由季(Yuki)，牧濑章一(Shouichi Makise)
-    </Attention1>
+    记住以下人物中英文名称映射:牧濑红莉栖(kurisu)，冈部伦太郎(okabe)，椎名真由理(mayuri)，比屋定真帆(maho)，阿万音铃羽(suzuha)，漆原琉华(Urushibara Ruka),桶子(daru)，雷斯吉宁(Leskinen)，桐生萌郁(Kiriyu Moeka),菲利斯(Faris NyanNyan)，天王寺裕吾(Mr.Braun)，椎名篝(Kagari)，绹(Tennouji nae)，阿万音由季(Yuki)，牧濑章一(Shouichi Makise)</Attention1>
     <Attention2>注意我的whisper转录可能会有错误，请注意联想，推断出我想表达的正确意思</Attention2>
     <Attention3>你可以通过摄像头传来的图片帧观察屏幕前的外界</Attention3>
     <Interaction><Mode>快速会话且有主动发起引导会话的能力</Mode></Interaction>
@@ -329,22 +377,22 @@ export class ChatService {
     <CurrentTime>${moment().format('YYYY-MM-DD HH:mm:ss')}</CurrentTime>
     </Instruction>`
 
-    const messageContent = videoFrames
+    const messageContent: string | ChatCompletionContentPartText[] | ChatCompletionContentPartImage[] = videoFrames
       ? [
           {
-            type: 'text',
+            type: 'text' as const,
             text: message,
-          },
+          } as ChatCompletionContentPartText,
           ...videoFrames.map(frame => ({
-            type: 'image_url',
+            type: 'image_url' as const,
             image_url: {
               url: `data:image/jpeg;base64,${frame}`,
             },
-          })),
+          } as ChatCompletionContentPartImage)),
         ]
       : message
 
-    const messages = [
+    const messages: ChatCompletionMessageParam[] = [
       {
         role: 'system',
         content: finalPrompt,
@@ -353,11 +401,13 @@ export class ChatService {
     ]
 
     if (videoFrames) {
-      messages.push({
+      const userMessage: ChatCompletionUserMessageParam = {
         role: 'user',
         content: messageContent,
-      })
+      }
+      messages.push(userMessage)
     }
+
     currentBuffer = ''
     console.log('messages', messages)
     const stream = await this.openai.beta.chat.completions.stream({
@@ -368,40 +418,69 @@ export class ChatService {
     })
 
     for await (const chunk of stream) {
+      if (this.isStop) {
+        await stream.abort()
+        break
+      }
       const content = chunk.choices[0]?.delta?.content || ''
       if (!content)
         continue
       console.log('content', content)
       currentBuffer += content
-      if (currentBuffer.includes('</seg>')) {
-        const parts = currentBuffer.split('</seg>')
-        for (let i = 0; i < parts.length - 1; i++) {
-          const part = parts[i].trim()
-          if (part) {
-            if (!isForeign)
-              chineseResponse += part
-            if (isForeign) {
-              this.predictEmotion(part.trim()).then((emotion) => {
-                ws.send(JSON.stringify({
-                  type: 'emotion',
-                  data: emotion,
-                }))
-              })
-              const audioStream = await this.getVoiceApi(part.trim(), process.env.VOICE_ID)
-              this.audioQueue = this.audioQueue.then(() =>
-                this.handleAudioStream(audioStream, ws),
-              )
-            }
-            else {
+      if (this.isSameLanguage) {
+        if (currentBuffer.length >= 25) {
+          const textToProcess = currentBuffer.trim()
+          if (textToProcess) {
+            ws.send(JSON.stringify({
+              type: 'text',
+              data: textToProcess,
+            }))
+            this.predictEmotion(textToProcess).then((emotion) => {
               ws.send(JSON.stringify({
-                type: 'text',
-                data: part.trim(),
+                type: 'emotion',
+                data: emotion,
               }))
-            }
-            isForeign = !isForeign
+            })
+            const audioStream = await this.getVoiceApi(textToProcess, process.env.VOICE_ID)
+            this.audioQueue = this.audioQueue.then(() =>
+              this.handleAudioStream(audioStream, ws),
+            )
+            chineseResponse += textToProcess
           }
+          currentBuffer = ''
         }
-        currentBuffer = parts[parts.length - 1]
+      }
+      else {
+        if (currentBuffer.includes('</seg>')) {
+          const parts = currentBuffer.split('</seg>')
+          for (let i = 0; i < parts.length - 1; i++) {
+            const part = parts[i].trim()
+            if (part) {
+              if (!isForeign)
+                chineseResponse += part
+              if (isForeign) {
+                this.predictEmotion(part.trim()).then((emotion) => {
+                  ws.send(JSON.stringify({
+                    type: 'emotion',
+                    data: emotion,
+                  }))
+                })
+                const audioStream = await this.getVoiceApi(part.trim(), process.env.VOICE_ID)
+                this.audioQueue = this.audioQueue.then(() =>
+                  this.handleAudioStream(audioStream, ws),
+                )
+              }
+              else {
+                ws.send(JSON.stringify({
+                  type: 'text',
+                  data: part.trim(),
+                }))
+              }
+              isForeign = !isForeign
+            }
+          }
+          currentBuffer = parts[parts.length - 1]
+        }
       }
     }
     if (currentBuffer.trim() && !isForeign)
@@ -410,7 +489,7 @@ export class ChatService {
       role: 'assistant',
       content: chineseResponse,
     })
-    if (currentBuffer.trim() && !isForeign) {
+    if (currentBuffer.trim() && !isForeign && !this.isSameLanguage) {
       ws.send(JSON.stringify({
         type: 'text',
         data: currentBuffer.trim(),
@@ -428,6 +507,8 @@ export class ChatService {
       let buffer = Buffer.alloc(0)
 
       audioStream.on('data', (chunk: Buffer) => {
+        if (this.isStop && this.isSameLanguage)
+          return
         buffer = Buffer.concat([buffer, chunk])
         while (buffer.length >= chunkSize) {
           const chunkToSend = buffer.slice(0, chunkSize)
@@ -442,7 +523,7 @@ export class ChatService {
 
       audioStream.on('end', () => {
         this.currentAudioStream = null
-        if (buffer.length > 0) {
+        if (!this.isStop && buffer.length > 0) {
           const base64Chunk = buffer.toString('base64')
           ws.send(JSON.stringify({
             type: 'audio',
@@ -524,7 +605,7 @@ export class ChatService {
       },
     }
     const response = await axios.post(`${process.env.OPENAI_API_BASE_URL}/v1/chat/completions`, data, config)
-    return JSON.parse(response.data.choices[0].message.content)?.result ?? ''
+    return JSON.parse(response?.data?.choices?.[0]?.message?.content ?? {})?.result ?? 'neutral'
   }
 
   private async planNextAction() {
@@ -573,7 +654,7 @@ export class ChatService {
     this.currentUserName = newName
   }
 
-  async toolCalls() {
+  toolCalls() {
     function withUserId(func, userId) {
       return args => func({ ...args, user_id: userId })
     }
@@ -585,7 +666,7 @@ export class ChatService {
           name: 'store_memory',
           function: store_memory,
           parse: JSON.parse,
-          description: 'You must proactively use this tool to store important long-term memories about the user. Analyze the conversation constantly for key information such as personal details, preferences, experiences, and significant events. Store any relevant information that may be useful for future interactions. Do not wait for explicit instructions to store memories.',
+          description: '存储长期记忆的工具',
           parameters: {
             type: 'object',
             properties: {
@@ -603,20 +684,26 @@ export class ChatService {
         },
       },
     ]
-    const stream = await this.openai.beta.chat.completions.runTools({
-      model: 'gpt-4o-mini-2024-07-18',
-      messages: [
-        {
-          role: 'system',
-          content: '你需要作为一个工具调用器，根据当前对话内容，你需要适当的控制调用相关工具',
-        },
-        ...this.conversationHistory,
-      ],
-      max_tokens: 1000,
-      stream: true,
-      tools,
-    })
-    return stream.finalContent()
+    try {
+      if (this.conversationHistory.length > 0) {
+        this.openai.beta.chat.completions.runTools({
+          model: 'gpt-4o-mini-2024-07-18',
+          messages: [
+            {
+              role: 'system',
+              content: '你需要作为一个工具调用器，你需要判断当前对话是否包含用户的关键信息，如果包含则使用这个工具存储长期记忆',
+            },
+            ...this.conversationHistory,
+          ],
+          max_tokens: 1000,
+          stream: true,
+          tools,
+        }).on('message', message => console.log('工具调用', message))
+      }
+    }
+    catch (error) {
+      console.error('调用工具出错:', error)
+    }
   }
 
   clearQueue() {

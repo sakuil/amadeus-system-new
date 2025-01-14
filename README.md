@@ -48,7 +48,7 @@
 | `OPENAI_API_KEY` | 调用LLM的API Key，请填写章节LLM中获取的API令牌 |
 | `OPENAI_API_BASE_URL` | 调用LLM的API端点，请填写章节LLM中获取的API端点 |
 | `OPENAI_API_MODEL` | 调用LLM的型号，必须使用claude-3-5-sonnet-20241022 |
-| `AI_PROMPT` | 调用LLM的提示词，默认为"使用命运石之门(steins gate)的牧濑红莉栖(kurisu),一个天才少女,性格傲娇,不喜欢被叫克里斯蒂娜" |
+| `AI_PROMPT` | 调用LLM的提示词，默认为"命运石之门(steins gate)的牧濑红莉栖(kurisu),一个天才少女,性格傲娇,不喜欢被叫克里斯蒂娜" |
 | `FISH_AUDIO_TOKEN` | 调用Fish Audio的API Key，请填写章节Fish Audio中获取的API Key |
 | `WHISPER_API_TOKEN` | 调用Whisper的API Key，请填写章节Groq中获取的API Key或者API令牌 |
 | `WHISPER_API_ENDPOINT` | 调用Whisper的API端点，请填写章节Groq中获取的API端点 |

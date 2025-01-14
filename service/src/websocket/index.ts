@@ -93,6 +93,7 @@ export function setupWebSocket(server: http.Server) {
                   type: WebSocketMessageTypes.SPEECH_TEXT,
                   data: text,
                 }))
+                ws.chatService.stopAudioStream()
                 if (ws.isVideoOn && ws.videoFrames && ws.videoFrames.length > 0)
                   await ws.chatService.handleChat(text, ws, ws.videoFrames)
                 else

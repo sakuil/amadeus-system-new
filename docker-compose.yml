@@ -21,6 +21,8 @@ services:
       - WHISPER_API_ENDPOINT=${WHISPER_API_ENDPOINT}
       - VOICE_ID=${VOICE_ID}
       - MEM_KEY=${MEM_KEY}
+      - VOICE_OUTPUT_LANGUAGE=${VOICE_OUTPUT_LANGUAGE}
+      - TEXT_OUTPUT_LANGUAGE=${TEXT_OUTPUT_LANGUAGE}
     restart: unless-stopped
     networks:
       - amadeus-network

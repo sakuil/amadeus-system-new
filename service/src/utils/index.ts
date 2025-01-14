@@ -20,3 +20,11 @@ export async function getUserMemories(userId: string) {
   const memories = await client.getAll({ user_id: normalizedUserId })
   return memories || []
 }
+
+export function getLanguageText(lang: string): string {
+  switch (lang) {
+    case 'ja': return '日文'
+    case 'zh': return '中文'
+    default: return '英文'
+  }
+}

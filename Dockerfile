@@ -49,6 +49,8 @@ RUN echo '#!/bin/sh' > /app/start.sh && \
     echo 'echo "WHISPER_API_TOKEN=$WHISPER_API_TOKEN" >> /app/service/.env' >> /app/start.sh && \
     echo 'echo "VOICE_ID=$VOICE_ID" >> /app/service/.env' >> /app/start.sh && \
     echo 'echo "MEM_KEY=$MEM_KEY" >> /app/service/.env' >> /app/start.sh && \
+    echo 'echo "VOICE_OUTPUT_LANGUAGE=$VOICE_OUTPUT_LANGUAGE" >> /app/service/.env' >> /app/start.sh && \
+    echo 'echo "TEXT_OUTPUT_LANGUAGE=$TEXT_OUTPUT_LANGUAGE" >> /app/service/.env' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
     echo '# 重新构建前端' >> /app/start.sh && \
     echo 'cd /app && pnpm build' >> /app/start.sh && \
