@@ -174,7 +174,8 @@ export class ChatService {
       const textLangText = getLanguageText(this.textOutputLanguage)
 
       const outputFormat = this.isSameLanguage
-        ? `直接输出${voiceLangText}`
+        ? `严格按照"${voiceLangText}</seg>${textLangText}</seg>${voiceLangText}</seg>${textLangText}</seg>..." 的格式输出
+        <Reason>方便我进行分段tts，这样能够让我快速转tts</Reason>`
         : `严格按照"${voiceLangText}</seg>${textLangText}</seg>${voiceLangText}</seg>${textLangText}</seg>..." 的格式输出
            <Reason>方便我进行分段tts，要求必须最先输出${voiceLangText}，再输出"</seg>"，最后再输出${textLangText}，这样能够让我快速转tts</Reason>`
       this.planNextAction().then((nextAction) => {
@@ -269,17 +270,26 @@ export class ChatService {
           }
         }
         else {
-          if (response.length) {
-            const emotion = await this.predictEmotion(response)
-            this.cachedSelfMotivated = {
-              text: {
-                foreign: response,
-                chinese: response,
-              },
-              emotion,
-              timestamp: now,
-              used: false,
-            }
+          const parts = response.split('</seg>')
+          const foreignTexts: string[] = []
+          const chineseTexts: string[] = []
+          for (let i = 0; i < parts.length; i++) {
+            foreignTexts.push(parts[i].trim())
+            chineseTexts.push(parts[i].trim())
+          }
+          if (foreignTexts.length === 0 || chineseTexts.length === 0)
+            throw new Error('Response format error: missing Japanese or Chinese text')
+          const foreignText = foreignTexts.join('')
+          const chineseText = chineseTexts.join('')
+          const emotion = await this.predictEmotion(foreignText)
+          this.cachedSelfMotivated = {
+            text: {
+              foreign: foreignText,
+              chinese: chineseText,
+            },
+            emotion,
+            timestamp: now,
+            used: false,
           }
         }
       }
@@ -366,7 +376,8 @@ export class ChatService {
     const textLangText = getLanguageText(this.textOutputLanguage)
 
     const outputFormat = this.isSameLanguage
-      ? `直接输出${voiceLangText}`
+      ? `严格按照"${voiceLangText}</seg>${textLangText}</seg>${voiceLangText}</seg>${textLangText}</seg>..." 的格式输出
+      <Reason>方便我进行分段tts，这样能够让我快速转tts</Reason>`
       : `严格按照 "${voiceLangText}</seg>${textLangText}</seg>${voiceLangText}</seg>${textLangText}</seg>..." 的格式输出
          <Reason>方便我进行分段tts，要求必须最先输出${voiceLangText}，再输出"</seg>"，最后再输出${textLangText}，这样能够让我快速转tts</Reason>`
 
@@ -441,26 +452,30 @@ export class ChatService {
       console.log('content', content)
       currentBuffer += content
       if (this.isSameLanguage) {
-        if (currentBuffer.length >= 25) {
-          const textToProcess = currentBuffer.trim()
-          if (textToProcess) {
-            ws.send(JSON.stringify({
-              type: 'text',
-              data: textToProcess,
-            }))
-            this.predictEmotion(textToProcess).then((emotion) => {
+        isForeign = false
+        if (currentBuffer.includes('</seg>')) {
+          const parts = currentBuffer.split('</seg>')
+          for (let i = 0; i < parts.length - 1; i++) {
+            const part = parts[i].trim()
+            if (part) {
+              chineseResponse += part
+              this.predictEmotion(part.trim()).then((emotion) => {
+                ws.send(JSON.stringify({
+                  type: 'emotion',
+                  data: emotion,
+                }))
+              })
               ws.send(JSON.stringify({
-                type: 'emotion',
-                data: emotion,
+                type: 'text',
+                data: part.trim(),
               }))
-            })
-            const audioStream = await this.getVoiceApi(textToProcess, process.env.VOICE_ID)
-            this.audioQueue = this.audioQueue.then(() =>
-              this.handleAudioStream(audioStream, ws),
-            )
-            chineseResponse += textToProcess
+              const audioStream = await this.getVoiceApi(part.trim(), process.env.VOICE_ID)
+              this.audioQueue = this.audioQueue.then(() =>
+                this.handleAudioStream(audioStream, ws),
+              )
+            }
           }
-          currentBuffer = ''
+          currentBuffer = parts[parts.length - 1]
         }
       }
       else {
@@ -502,7 +517,7 @@ export class ChatService {
       role: 'assistant',
       content: chineseResponse,
     })
-    if (currentBuffer.trim() && !isForeign && !this.isSameLanguage) {
+    if (currentBuffer.trim() && !isForeign) {
       ws.send(JSON.stringify({
         type: 'text',
         data: currentBuffer.trim(),
