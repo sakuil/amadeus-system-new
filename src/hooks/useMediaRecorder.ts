@@ -40,7 +40,7 @@ export function useMediaRecorder(): MediaRecorderHook {
             reader.readAsDataURL(event.data);
           }
         };
-        mediaRecorder.start(50);
+        mediaRecorder.start(150);
         setIsRecording(true);
       })
       .catch(error => {
