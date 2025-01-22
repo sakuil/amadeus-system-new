@@ -141,9 +141,4 @@ docker-compose logs -f
 
 想要体验 Cursor Business 套餐？微信扫描下方二维码，长按识别加入交流群：
 
-🎁 特别优惠：另有 ¥210/月套餐，加群即可享受：
-- 原价 $200/月的 ChatGPT Pro
-- 原价 $20/月的 Claude Pro
-- 超值二合一特惠！
-
-![交流群](https://s3.bmp.ovh/imgs/2025/01/10/dbe79bacc06c4032.png)
+![交流群](https://image-1307638632.cos.ap-shanghai.myqcloud.com/%E5%BE%AE%E4%BF%A1%E7%BE%A4.png)
