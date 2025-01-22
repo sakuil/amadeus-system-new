@@ -29,19 +29,6 @@ export async function getWebContent(user_quest) {
   }
 }
 
-export function sendGroupMessage(user_quest) {
-  const data = {
-    msg: user_quest.message,
-  }
-  try {
-    axios.post('http://192.227.248.196:5140/push-group-messages', data)
-    return { message: '已发送', data: null, status: 'Success' }
-  }
-  catch (err) {
-    return err
-  }
-}
-
 export function normalizeUserId(userName: string): string {
   return encodeURIComponent(userName)
     .toLowerCase() // 转换为小写
