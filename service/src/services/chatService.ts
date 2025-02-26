@@ -75,28 +75,41 @@ export class ChatService {
     try {
       const formData = new FormData()
       const audioStream = this.bufferToStream(audioBuffer)
-      formData.append('model', 'whisper-large-v3')
-      formData.append('file', audioStream, { filename: 'audio.wav', contentType: 'audio/wav' })
+
+      // 根据 API 端点选择不同的模型
+      if (process.env.WHISPER_API_ENDPOINT?.includes('siliconflow'))
+        formData.append('model', 'FunAudioLLM/SenseVoiceSmall')
+      else
+        formData.append('model', 'whisper-large-v3')
+
+      // 使用更通用的 MIME 类型
+      formData.append('file', audioStream, {
+        filename: 'audio.wav',
+        contentType: 'audio/wav',
+      })
       formData.append('response_format', 'json')
+
       const config = {
         headers: {
           'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`,
           'Authorization': `Bearer ${process.env.WHISPER_API_TOKEN}`,
         },
       }
+
       const response = await axios.post(`${process.env.WHISPER_API_ENDPOINT}/v1/audio/transcriptions`, formData, config)
       if (response.status !== 200) {
         console.error('语音转文字接口返回失败:', {
           状态码: response.status,
           错误信息: response.data?.error || response.statusText,
-          详细信息: response.data
+          详细信息: response.data,
         })
-        return "[Error]用户语音转文字失败"
+        return '[Error]用户语音转文字失败'
       }
       return response.data.text
-    } catch (error) {
+    }
+    catch (error) {
       console.error('语音转文字接口返回失败:', error)
-      return "[Error]用户语音转文字失败"
+      return '[Error]用户语音转文字失败'
     }
   }
 
@@ -537,7 +550,7 @@ export class ChatService {
       audioStream.on('data', (chunk: Buffer) => {
         if (this.isStop && this.isSameLanguage)
           return
-        buffer = Buffer.concat([buffer, chunk])
+        buffer = Buffer.concat([buffer, chunk as Buffer])
         while (buffer.length >= chunkSize) {
           const chunkToSend = buffer.slice(0, chunkSize)
           buffer = buffer.slice(chunkSize)

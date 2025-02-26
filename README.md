@@ -35,7 +35,7 @@
 
 1. 点击上方的 "Deploy to Zeabur" 按钮
 2. 如果你还没有 Zeabur 账号，需要先[注册](https://zeabur.com?referralCode=aipoet)。需要花费$5开通Developer计划,可使用WildCard虚拟信用卡开通,也可直接使用支付宝充值余额支付。
-3. 点击上方按钮一键部署到日本AWS Tokyo区域，等待部署完成，然后如下图，填写环境变量，最后再点击Networking，生成域名，你就可以通过 Zeabur 提供的域名访问你的应用了
+3. 点击上方按钮一键部署到香港AWS Tokyo区域(注意ASR使用Groq的用户不能部署到香港，否则无法语音识别)，等待部署完成，然后如下图，填写环境变量，最后再点击Networking，生成域名，你就可以通过 Zeabur 提供的域名访问你的应用了
 
 
 #### 环境变量配置说明
@@ -47,11 +47,11 @@
 | `VITE_APP_LOGIN_PASSWORD` | 用于前端登录系统鉴权的密码 |
 | `OPENAI_API_KEY` | 调用LLM的API Key，请填写章节LLM中获取的API令牌 |
 | `OPENAI_API_BASE_URL` | 调用LLM的API端点，请填写章节LLM中获取的API端点 |
-| `OPENAI_API_MODEL` | 调用LLM的型号，必须使用claude-3-5-sonnet-20241022 |
+| `OPENAI_API_MODEL` | 调用LLM的型号，可以使用claude-3-7-sonnet-20250219或者claude-3-5-sonnet-20241022 |
 | `AI_PROMPT` | 调用LLM的提示词，默认为"命运石之门(steins gate)的牧濑红莉栖(kurisu),一个天才少女,性格傲娇,不喜欢被叫克里斯蒂娜" |
 | `FISH_AUDIO_TOKEN` | 调用Fish Audio的API Key，请填写章节Fish Audio中获取的API Key |
-| `WHISPER_API_TOKEN` | 调用Whisper的API Key，请填写章节Groq中获取的API Key或者API令牌 |
-| `WHISPER_API_ENDPOINT` | 调用Whisper的API端点，请填写章节Groq中获取的API端点 |
+| `WHISPER_API_TOKEN` | 调用Whisper的API Key，请填写章节ASR中获取的API Key或者API令牌 |
+| `WHISPER_API_ENDPOINT` | 调用Whisper的API端点，请填写章节ASR中获取的API端点 |
 | `VOICE_ID` | 牧濑红莉栖的Fish Audio语音ID为4c0b21b2ddb247d8ba45a1c1e84afe64 |
 | `MEM_KEY` | 用于调用Mem0的API Key，请填写章节Mem0中获取的API Key |
 | `VOICE_OUTPUT_LANGUAGE` | 控制AI语音输出的语种，可填 ja zh en 对应日语，汉语，英语三种类型，不填默认为ja |
@@ -116,29 +116,3 @@ docker-compose up -d
 ```bash
 docker-compose logs -f
 ```
-
-# 广告位
-
-## Amadeus System New Alpha 是由 Cursor 助力开发的
-
-🚀 Cursor 是新一代 AI 编程工具，让你的编程效率提升 10 倍！
-官方网站：[www.cursor.com](https://www.cursor.com)
-
-### 💎 Cursor Business 套餐优势
-
-- ✨ 每月 5000 次高级模型独享额度
-- 🔒 隐私模型保护，代码完全保密
-- ⚡️ 高峰期优先使用高级模型
-- 🤖 支持 GPT-4、Claude 3.5 等顶级模型
-- 💫 独享配额，不与他人共享
-
-### 💰 超值优惠价
-
-- 仅需 ¥50/月
-- 管理员一对一服务
-
-### 📱 立即加入
-
-想要体验 Cursor Business 套餐？微信扫描下方二维码，长按识别加入交流群：
-
-![交流群](https://image-1307638632.cos.ap-shanghai.myqcloud.com/%E5%BE%AE%E4%BF%A1%E7%BE%A4.png)

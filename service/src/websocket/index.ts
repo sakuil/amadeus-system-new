@@ -8,10 +8,15 @@ import { WebSocketMessageTypes } from '../constants'
 
 const PING_INTERVAL = 30000
 
+interface AudioChunk {
+  timestamp: number
+  data: string // base64 音频数据
+}
+
 interface ExtendedWebSocket extends WebSocket {
   isAlive?: boolean
   isRecording?: boolean
-  audioChunks?: string[]
+  audioChunks?: AudioChunk[]
   videoFrames?: string[]
   isVideoOn?: boolean
   chatService?: ChatService
@@ -24,11 +29,11 @@ export function setupWebSocket(server: http.Server) {
     this.isAlive = true
   }
 
-  function base64ToBuffer(base64Chunks: string[]): Buffer {
+  function base64ToBuffer(base64Chunks: AudioChunk[]): Buffer {
     const buffers = base64Chunks.map((chunk) => {
-      return Buffer.from(chunk, 'base64')
+      return Buffer.from(chunk.data, 'base64')
     })
-    return Buffer.concat(buffers)
+    return Buffer.concat(buffers as Buffer[])
   }
 
   server.on('upgrade', async (request, socket, head) => {
@@ -89,9 +94,9 @@ export function setupWebSocket(server: http.Server) {
                 }))
                 ws.audioChunks.sort((a, b) => a.timestamp - b.timestamp)
                 // 只取音频数据部分
-                const sortedAudioData = ws.audioChunks.map(chunk => chunk.data)
+                const sortedAudioData = ws.audioChunks.map(chunk => chunk)
                 const audioBuffer = base64ToBuffer(sortedAudioData)
-                console.log("开始语音转文字")
+                console.log('开始语音转文字')
                 const text = await ws.chatService.audio2Text(audioBuffer)
                 ws.send(JSON.stringify({
                   type: WebSocketMessageTypes.SPEECH_TEXT,
@@ -119,7 +124,7 @@ export function setupWebSocket(server: http.Server) {
           }
           case WebSocketMessageTypes.AUDIO_CHUNK: {
             if (ws.isRecording && parsedMessage.data) {
-              ws.audioChunks?.push(parsedMessage.data)
+              ws.audioChunks?.push(parsedMessage.data as unknown as AudioChunk)
               ws.send(JSON.stringify({
                 type: WebSocketMessageTypes.RESPONSE,
                 data: '音频块已接收',
