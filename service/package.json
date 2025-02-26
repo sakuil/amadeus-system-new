@@ -36,7 +36,7 @@
     "js-tiktoken": "^1.0.14",
     "keyv": "^4.5.2",
     "keyv-file": "^0.2.0",
-    "mem0ai": "^1.0.28",
+    "mem0ai": "1.0.28",
     "minio": "^8.0.1",
     "mint-filter": "^4.0.3",
     "moment": "^2.29.4",
