@@ -42,7 +42,6 @@
 
 | 环境变量 | 说明 |
 |---------|------|
-| `VITE_AUTH_API_TOKEN` | 用于后端鉴权，请填写一个随机字符串，长度至少为8位 |
 | `VITE_APP_DEFAULT_USERNAME` | 用于前端登录系统的用户名，从而让Amadeus识别你的身份 |
 | `WEBRTC_API_URL` | WEBRTC的服务器API地址，Zeabur模板里已经内置了公共的WEBRTC服务器，你也可以自行参考文档自行搭建 |
 
@@ -72,7 +71,6 @@ services:
     ports:
       - "3002:3002"  # 服务端口
     environment:
-      - VITE_AUTH_API_TOKEN=${VITE_AUTH_API_TOKEN}
       - VITE_APP_DEFAULT_USERNAME=${VITE_APP_DEFAULT_USERNAME}
       - WEBRTC_API_URL=${WEBRTC_API_URL}
     restart: unless-stopped
