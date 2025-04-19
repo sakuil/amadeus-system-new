@@ -795,11 +795,11 @@ const ConfigPanel = ({ open, onOpenChange, onSave }: ConfigPanelProps): JSX.Elem
                         <SelectValue placeholder="选择 AI 模型" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="gpt-4o-mini">GPT-4o-mini</SelectItem>
-                        <SelectItem value="gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
-                        <SelectItem value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</SelectItem>
-                        <SelectItem value="claude-3-7-sonnet-20250219">Claude 3.7 Sonnet</SelectItem>
-                        <SelectItem value="custom">自定义模型</SelectItem>
+                        <SelectItem value="gpt-4.1-mini">gpt-4.1-mini</SelectItem>
+                        <SelectItem value="gemini-2.0-flash">gemini-2.0-flash</SelectItem>
+                        <SelectItem value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</SelectItem>
+                        <SelectItem value="claude-3-7-sonnet-20250219">claude-3-7-sonnet-20250219</SelectItem>
+                        <SelectItem value="custom">自定义模型ID</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -813,7 +813,7 @@ const ConfigPanel = ({ open, onOpenChange, onSave }: ConfigPanelProps): JSX.Elem
                 
                 {aiConfig.ai_model === 'custom' && (
                   <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4 mt-2">
-                    <Label className="sm:text-right">自定义模型名称:</Label>
+                    <Label className="sm:text-right">自定义模型ID:</Label>
                     <Input
                       value={aiConfig.custom_model_name}
                       onChange={(e) => {
@@ -821,7 +821,7 @@ const ConfigPanel = ({ open, onOpenChange, onSave }: ConfigPanelProps): JSX.Elem
                         handleAiConfigChange('custom_model_name', customName);
                       }}
                       className={`sm:col-span-3 ${errors.custom_model_name ? 'border-red-500' : ''}`}
-                      placeholder="请输入自定义模型名称"
+                      placeholder="请输入自定义模型ID"
                     />
                   </div>
                 )}
