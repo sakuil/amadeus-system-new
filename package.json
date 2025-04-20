@@ -82,7 +82,8 @@
         "from": "service/",
         "to": "service",
         "filter": [
-          "**/*"
+          "**/*",
+          "!node_modules/**"
         ]
       }
     ],
