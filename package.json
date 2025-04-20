@@ -95,6 +95,11 @@
     },
     "linux": {
       "icon": "electron/build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
     }
   }
 }
