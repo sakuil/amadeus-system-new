@@ -1,7 +1,8 @@
 {
   "name": "amadeus-system-new-alpha",
+  "description": "Her.AI Alpha Application inspired by Steins;Gate 0",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,8 +13,8 @@
     "preview": "vite preview",
     "build:frontend": "vite build",
     "build:node": "cd service && npm install && npm run build",
-    "build:electron": "electron-builder",
-    "start:electron": "electron electron/main.mjs"
+    "build:electron": "pnpm build && pnpm build:api && electron-builder",
+    "start:electron": "pnpm build && pnpm build:api && electron electron/main.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.2",
@@ -30,6 +31,8 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "dotenv": "^16.5.0",
+    "electron-log": "^5.1.1",
+    "electron-updater": "^6.2.0",
     "lucide-react": "^0.453.0",
     "mobx": "^6.13.5",
     "mobx-react": "^9.1.1",
@@ -52,8 +55,6 @@
     "autoprefixer": "^10.4.20",
     "electron": "^30.0.0",
     "electron-builder": "^23.6.0",
-    "electron-log": "^5.1.1",
-    "electron-updater": "^6.2.0",
     "eslint": "^9.11.1",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.12",
@@ -65,27 +66,34 @@
     "typescript-eslint": "^8.7.0",
     "vite": "^5.4.8"
   },
+  "main": "electron/main.mjs",
   "build": {
-    "appId": "com.her.ai.alpha",
-    "productName": "HerAI Alpha(formerly Amadeus)",
+    "appId": "com.her.ai",
+    "productName": "Amadeus",
     "files": [
-      "electron/**/*.mjs",
-      "electron/**/*.js",
-      "service/build/**/*",
-      "dist/**/*",
-      "package.json"
+      "**/*",
+      "!dist"
     ],
     "directories": {
-      "buildResources": "build"
+      "buildResources": "electron/build"
     },
+    "extraResources": [
+      {
+        "from": "service/",
+        "to": "service",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
     "win": {
-      "icon": "build/icon.ico"
+      "icon": "electron/build/icon.ico"
     },
     "mac": {
-      "icon": "build/icon.icns"
+      "icon": "electron/build/icon.icns"
     },
     "linux": {
-      "icon": "build/icon.png"
+      "icon": "electron/build/icon.png"
     }
   }
 }

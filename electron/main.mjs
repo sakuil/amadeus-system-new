@@ -1,8 +1,6 @@
 import { app, BrowserWindow, Menu, Tray, globalShortcut, protocol } from 'electron';
 import path from 'path';
 import { fork, exec } from 'child_process';
-import pkg from 'electron-updater';
-const { autoUpdater } = pkg;
 import logPkg from 'electron-log';
 const log = logPkg.default || logPkg;
 import fs from 'fs';
@@ -13,23 +11,26 @@ import dotenv from 'dotenv';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// 根据是否打包使用不同的根目录
+const rootPath = app.isPackaged ? process.resourcesPath : __dirname;
+
 let mainWindow;
 let tray;
 let isAlwaysOnTop = false;
 let previewProcess; // 存储预览服务进程
 
-// 加载环境变量 (.env)
-dotenv.config({ path: path.resolve(__dirname, '../service/.env') });
-
-// 日志重定向到文件，方便排查自动更新问题
-autoUpdater.logger = log;
-autoUpdater.logger.transports.file.level = 'info';
-
+// 加载环境变量（注意：打包后 .env 文件应放置在 extraResources 中的 service 目录内）
 function loadEnv() {
   const cfgDir = path.join(app.getPath('userData'), 'config');
   const userEnv = path.join(cfgDir, '.env');
-  const defaultEnv = path.resolve(__dirname, '../service/.env');
-
+  let defaultEnv;
+  if (app.isPackaged) {
+    // 打包后，我们把 service 目录作为 extraResources 打包到 resources 目录
+    defaultEnv = path.join(process.resourcesPath, 'service', '.env');
+  } else {
+    defaultEnv = path.resolve(__dirname, '../service/.env');
+  }
+  
   if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
   if (!fs.existsSync(userEnv) && fs.existsSync(defaultEnv)) {
     fs.copyFileSync(defaultEnv, userEnv);
@@ -37,37 +38,11 @@ function loadEnv() {
   dotenv.config({ path: userEnv });
 }
 
-function setupAutoUpdater(win) {
-  autoUpdater.on('checking-for-update', () => {
-    log.info('正在检查更新...');
-  });
-  autoUpdater.on('update-available', (info) => {
-    log.info('发现新版本:', info.version);
-    win.webContents.send('update-available', info);
-  });
-  autoUpdater.on('update-not-available', () => {
-    log.info('当前已是最新版本');
-  });
-  autoUpdater.on('error', (err) => {
-    log.error('更新检查出错:', err == null ? 'unknown' : (err.stack || err.toString()));
-    win.webContents.send('update-error', err ? (err.stack || err.toString()) : 'unknown');
-  });
-  autoUpdater.on('download-progress', (progressObj) => {
-    log.info('下载进度:', progressObj.percent + '%');
-    win.webContents.send('download-progress', progressObj);
-  });
-  autoUpdater.on('update-downloaded', (info) => {
-    log.info('新版本已下载，准备安装...');
-    win.webContents.send('update-downloaded', info);
-    autoUpdater.quitAndInstall();
-  });
-}
-
+// 获取图标路径时使用正确的根路径
 function getIconPath() {
-  // 优先使用 build 目录下的 icon
   const iconCandidates = [
-    path.join(__dirname, '../build/icon.png'),
-    path.join(__dirname, '../build/icon.ico'),
+    path.join(__dirname, './build/icon.png'),
+    path.join(__dirname, './build/icon.ico'),
     path.join(__dirname, 'assets/icon.png'),
     path.join(__dirname, 'icon.png'),
   ];
@@ -77,15 +52,14 @@ function getIconPath() {
   return undefined;
 }
 
-// 启动预览服务器
+// 启动预览服务器（注意：打包后请确保 service 目录已经包含预览服务所需文件）
 function startPreviewServer() {
   return new Promise((resolve, reject) => {
     log.info('正在启动preview服务器...');
-    
-    // 在项目根目录执行pnpm preview
+      
     previewProcess = exec('pnpm preview', {
       cwd: path.join(__dirname, '..'),
-      env: { ...process.env, NODE_ENV: 'production' } // 设置环境变量
+      env: { ...process.env, NODE_ENV: 'production' }
     });
     
     previewProcess.stdout.on('data', (data) => {
@@ -97,7 +71,6 @@ function startPreviewServer() {
         if (portMatch && portMatch[1]) {
           const port = portMatch[1];
           log.info(`预览服务器实际端口: ${port}`);
-          global.previewPort = port; // 保存端口号到全局变量
           resolve(port);
         }
       }
@@ -107,11 +80,10 @@ function startPreviewServer() {
       log.error(`预览服务器错误: ${data}`);
     });
     
-    // 设置超时，避免无限等待，默认使用4173端口
     setTimeout(() => {
-      log.info('预览服务器可能已启动，使用默认端口4173');
+      log.info('预览服务器可能已启动，使用默认端口3002');
       if (!global.previewPort) {
-        global.previewPort = '4173';
+        global.previewPort = '3002';
       }
       resolve(global.previewPort);
     }, 8000); // 增加超时时间
@@ -133,7 +105,9 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: fs.existsSync(path.join(__dirname, 'preload.mjs')) ? path.join(__dirname, 'preload.mjs') : undefined
+      preload: fs.existsSync(path.join(rootPath, 'preload.mjs'))
+        ? path.join(rootPath, 'preload.mjs')
+        : undefined
     }
   };
   const iconPath = getIconPath();
@@ -141,7 +115,7 @@ function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions);
 
-  // 使用实际检测到的端口，默认为3002或4173
+  // 使用实际检测到的端口，默认为3002
   const port = global.previewPort || '3002';
   mainWindow.loadURL(`http://127.0.0.1:${port}`);
   
@@ -165,15 +139,6 @@ function createWindow() {
       mainWindow.loadURL(`http://127.0.0.1:${nextPort}`);
     }
   });
-
-  // 自动更新监听
-  setupAutoUpdater(mainWindow);
-  try {
-    autoUpdater.checkForUpdatesAndNotify();
-  } catch (e) {
-    log.error('自动更新检查异常:', e.stack || e.toString());
-    mainWindow.webContents.send('update-error', e.stack || e.toString());
-  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -202,14 +167,20 @@ function createTray() {
 }
 
 // 启动 node 中间层（service/build/index.mjs）
-const nodeServerPath = path.join(__dirname, '../service/build/index.mjs');
+// 根据是否打包选择正确路径
+const nodeServerPath = app.isPackaged 
+  ? path.join(process.resourcesPath, 'service', 'build', 'index.mjs')
+  : path.join(__dirname, '../service/build/index.mjs');
+
 // 确保可以正确fork ESM模块
 const nodeProcess = fork(nodeServerPath, [], { 
   stdio: 'inherit',
   // ESM兼容性选项
   execArgv: ['--experimental-specifier-resolution=node'],
-  cwd: path.resolve(__dirname, '../service'), // 设置工作目录为 service
-  env: { ...process.env },
+  cwd: app.isPackaged 
+    ? path.join(process.resourcesPath, 'service')
+    : path.resolve(__dirname, '../service'),
+  env: { ...process.env, NODE_ENV: 'production' },
 });
 
 // 添加全局错误处理
@@ -223,11 +194,48 @@ process.on('unhandledRejection', (reason, promise) => {
   log.error('未处理的Promise拒绝:', reason);
 });
 
+// 优雅关闭所有子进程
+function cleanupProcesses() {
+  log.info('开始清理子进程...');
+  
+  // 关闭 Node 服务进程
+  if (nodeProcess) {
+    try {
+      if (process.platform === 'win32') {
+        exec(`taskkill /pid ${nodeProcess.pid} /T /F`, (error) => {
+          if (error) log.error(`终止Node服务进程失败: ${error}`);
+          else log.info(`成功终止Node服务进程: ${nodeProcess.pid}`);
+        });
+      } else {
+        nodeProcess.kill('SIGKILL');
+      }
+    } catch (err) {
+      log.error(`终止Node服务进程时出错: ${err}`);
+    }
+  }
+  
+  // 关闭预览服务器
+  if (previewProcess) {
+    try {
+      if (process.platform === 'win32') {
+        exec(`taskkill /pid ${previewProcess.pid} /T /F`, (error) => {
+          if (error) log.error(`终止预览服务器进程失败: ${error}`);
+          else log.info(`成功终止预览服务器进程: ${previewProcess.pid}`);
+        });
+      } else {
+        previewProcess.kill('SIGKILL');
+      }
+      log.info('预览服务器已关闭');
+    } catch (err) {
+      log.error(`终止预览服务器进程时出错: ${err}`);
+    }
+  }
+}
+
 app.whenReady().then(async () => {
   loadEnv();
   // 注册协议处理程序
   if (app.isPackaged) {
-    // 在打包应用中处理file协议
     app.on('web-contents-created', (e, contents) => {
       contents.on('will-navigate', (event, url) => {
         if (url.startsWith('file:')) {
@@ -236,7 +244,6 @@ app.whenReady().then(async () => {
       });
     });
   } else {
-    // 开发模式下允许加载本地资源
     protocol.registerFileProtocol('file', (request, callback) => {
       const pathname = decodeURI(request.url.replace('file:///', ''));
       callback(pathname);
@@ -244,7 +251,6 @@ app.whenReady().then(async () => {
   }
 
   try {
-    // 先启动preview服务器
     const port = await startPreviewServer();
     log.info(`预览服务器已启动在端口 ${port}，准备创建窗口`);
   } catch (err) {
@@ -281,20 +287,20 @@ app.whenReady().then(async () => {
   log.error('应用启动错误:', err);
 });
 
-// 退出时注销所有快捷键
 app.on('will-quit', () => {
+  log.info('应用即将退出，开始清理资源...');
   globalShortcut.unregisterAll();
+  cleanupProcesses();
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-  
-  // 关闭所有子进程
-  if (nodeProcess) nodeProcess.kill();
-  
-  // 关闭预览服务器
-  if (previewProcess) {
-    previewProcess.kill();
-    log.info('预览服务器已关闭');
+  if (process.platform !== 'darwin') {
+    cleanupProcesses();
+    app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  log.info('应用退出前，确保清理所有进程');
+  cleanupProcesses();
 });
