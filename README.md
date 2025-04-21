@@ -33,7 +33,7 @@
 
 项目提供了预编译的桌面客户端，支持 Windows系统：
 
-1. 访问 [GitHub Releases](https://github.com/ai-poet/amadeus-system-new-alpha/releases) 页面
+1. 访问 [GitHub Releases](https://github.com/ai-poet/amadeus-system-new/releases) 页面
 2. 安装并运行客户端
 3. 直接试用或者配置必要的参数
 
