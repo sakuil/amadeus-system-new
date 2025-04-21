@@ -6,6 +6,10 @@ const log = logPkg.default || logPkg;
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+// 引入创建静态服务器所需的模块
+import http from 'http';
+import { createReadStream } from 'fs';
+import mime from 'mime-types';
 
 // 获取 __dirname 等效
 const __filename = fileURLToPath(import.meta.url);
@@ -17,7 +21,7 @@ const rootPath = app.isPackaged ? process.resourcesPath : __dirname;
 let mainWindow;
 let tray;
 let isAlwaysOnTop = false;
-let previewProcess; // 存储预览服务进程
+let staticServer; // 静态服务器实例
 
 // 加载环境变量（注意：打包后 .env 文件应放置在 extraResources 中的 service 目录内）
 function loadEnv() {
@@ -52,46 +56,200 @@ function getIconPath() {
   return undefined;
 }
 
-// 启动预览服务器（注意：打包后请确保 service 目录已经包含预览服务所需文件）
-function startPreviewServer() {
+// 启动静态文件服务器
+function startStaticServer() {
   return new Promise((resolve, reject) => {
-    log.info('正在启动preview服务器...');
+    log.info('正在启动静态服务器...');
+    
+    // 确定静态文件目录路径
+    const distPath = app.isPackaged 
+      ? path.join(process.resourcesPath, 'dist') 
+      : path.join(__dirname, '../dist');
+    
+    // 默认端口
+    const PORT = 4173;
+    
+    // 创建HTTP服务器
+    staticServer = http.createServer((req, res) => {
+      // 解析请求URL路径
+      let urlPath = req.url;
       
-    previewProcess = exec('pnpm preview', {
-      cwd: path.join(__dirname, '..'),
-      env: { ...process.env, NODE_ENV: 'production' }
-    });
-    
-    previewProcess.stdout.on('data', (data) => {
-      log.info(`预览服务器输出: ${data}`);
-      // 检测实际的端口号
-      if (data.includes('http://localhost:') || data.includes('Local:   http://localhost:')) {
-        // 从输出中提取端口号
-        const portMatch = data.match(/localhost:(\d+)/);
-        if (portMatch && portMatch[1]) {
-          const port = portMatch[1];
-          log.info(`预览服务器实际端口: ${port}`);
-          resolve(port);
+      // 如果URL是根路径或者不存在，默认提供index.html
+      if (urlPath === '/' || urlPath === '') {
+        urlPath = '/index.html';
+      }
+      
+      // 构建文件的完整路径
+      const filePath = path.join(distPath, urlPath);
+      
+      // 检查文件是否存在
+      fs.access(filePath, fs.constants.R_OK, (err) => {
+        if (err) {
+          // 如果文件不存在，提供index.html（支持单页应用的路由）
+          if (err.code === 'ENOENT') {
+            const indexPath = path.join(distPath, 'index.html');
+            
+            // 再次检查index.html是否存在
+            fs.access(indexPath, fs.constants.R_OK, (err) => {
+              if (err) {
+                res.writeHead(404);
+                res.end('Not found');
+                return;
+              }
+              
+              // 设置内容类型
+              res.setHeader('Content-Type', 'text/html');
+              
+              // 流式传输文件内容
+              const fileStream = createReadStream(indexPath);
+              fileStream.pipe(res);
+              
+              fileStream.on('error', (error) => {
+                log.error(`文件读取错误: ${error}`);
+                res.writeHead(500);
+                res.end('Internal server error');
+              });
+            });
+            return;
+          }
+          
+          // 其他错误
+          res.writeHead(500);
+          res.end('Internal server error');
+          return;
         }
+        
+        // 确定文件的MIME类型
+        const contentType = mime.lookup(filePath) || 'application/octet-stream';
+        res.setHeader('Content-Type', contentType);
+        
+        // 流式传输文件内容
+        const fileStream = createReadStream(filePath);
+        fileStream.pipe(res);
+        
+        fileStream.on('error', (error) => {
+          log.error(`文件读取错误: ${error}`);
+          res.writeHead(500);
+          res.end('Internal server error');
+        });
+      });
+    });
+    
+    // 监听错误
+    staticServer.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        log.warn(`端口 ${PORT} 已被占用，尝试其他端口`);
+        // 端口被占用，可以在这里尝试使用其他端口
+        const alternativePorts = [5173, 8080, 8000, 3000];
+        tryAlternativePorts(alternativePorts, 0, distPath, resolve, reject);
+      } else {
+        log.error(`静态服务器错误: ${err}`);
+        reject(err);
       }
     });
     
-    previewProcess.stderr.on('data', (data) => {
-      log.error(`预览服务器错误: ${data}`);
+    // 启动服务器
+    staticServer.listen(PORT, '127.0.0.1', () => {
+      global.previewPort = PORT.toString();
+      log.info(`静态服务器已启动在端口 ${PORT}，为目录 ${distPath} 提供服务`);
+      resolve(PORT.toString());
     });
+  });
+}
+
+// 尝试备用端口
+function tryAlternativePorts(ports, index, distPath, resolve, reject) {
+  if (index >= ports.length) {
+    reject(new Error('所有备用端口都被占用'));
+    return;
+  }
+  
+  const PORT = ports[index];
+  
+  // 关闭之前的服务器实例
+  if (staticServer) {
+    staticServer.close();
+  }
+  
+  // 创建新的服务器实例
+  staticServer = http.createServer((req, res) => {
+    // 解析请求URL路径
+    let urlPath = req.url;
     
-    setTimeout(() => {
-      log.info('预览服务器可能已启动，使用默认端口3002');
-      if (!global.previewPort) {
-        global.previewPort = '3002';
+    // 如果URL是根路径或者不存在，默认提供index.html
+    if (urlPath === '/' || urlPath === '') {
+      urlPath = '/index.html';
+    }
+    
+    // 构建文件的完整路径
+    const filePath = path.join(distPath, urlPath);
+    
+    // 检查文件是否存在
+    fs.access(filePath, fs.constants.R_OK, (err) => {
+      if (err) {
+        // 如果文件不存在，提供index.html（支持单页应用的路由）
+        if (err.code === 'ENOENT') {
+          const indexPath = path.join(distPath, 'index.html');
+          
+          // 再次检查index.html是否存在
+          fs.access(indexPath, fs.constants.R_OK, (err) => {
+            if (err) {
+              res.writeHead(404);
+              res.end('Not found');
+              return;
+            }
+            
+            // 设置内容类型
+            res.setHeader('Content-Type', 'text/html');
+            
+            // 流式传输文件内容
+            const fileStream = createReadStream(indexPath);
+            fileStream.pipe(res);
+            
+            fileStream.on('error', (error) => {
+              log.error(`文件读取错误: ${error}`);
+              res.writeHead(500);
+              res.end('Internal server error');
+            });
+          });
+          return;
+        }
+        
+        // 其他错误
+        res.writeHead(500);
+        res.end('Internal server error');
+        return;
       }
-      resolve(global.previewPort);
-    }, 8000); // 增加超时时间
-    
-    previewProcess.on('error', (err) => {
-      log.error(`无法启动预览服务器: ${err}`);
+      
+      // 确定文件的MIME类型
+      const contentType = mime.lookup(filePath) || 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+      
+      // 流式传输文件内容
+      const fileStream = createReadStream(filePath);
+      fileStream.pipe(res);
+      
+      fileStream.on('error', (error) => {
+        log.error(`文件读取错误: ${error}`);
+        res.writeHead(500);
+        res.end('Internal server error');
+      });
+    });
+  });
+  
+  staticServer.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      log.warn(`备用端口 ${PORT} 也被占用，尝试下一个端口`);
+      tryAlternativePorts(ports, index + 1, distPath, resolve, reject);
+    } else {
       reject(err);
-    });
+    }
+  });
+  
+  staticServer.listen(PORT, '127.0.0.1', () => {
+    global.previewPort = PORT.toString();
+    log.info(`静态服务器已启动在备用端口 ${PORT}，为目录 ${distPath} 提供服务`);
+    resolve(PORT.toString());
   });
 }
 
@@ -115,9 +273,7 @@ function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions);
 
-  // 使用实际检测到的端口，默认为3002
-  const port = global.previewPort || '3002';
-  mainWindow.loadURL(`http://127.0.0.1:${port}`);
+  mainWindow.loadURL(`http://127.0.0.1:3002`);
   
   // 处理加载错误
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -214,20 +370,13 @@ function cleanupProcesses() {
     }
   }
   
-  // 关闭预览服务器
-  if (previewProcess) {
+  // 关闭静态服务器
+  if (staticServer) {
     try {
-      if (process.platform === 'win32') {
-        exec(`taskkill /pid ${previewProcess.pid} /T /F`, (error) => {
-          if (error) log.error(`终止预览服务器进程失败: ${error}`);
-          else log.info(`成功终止预览服务器进程: ${previewProcess.pid}`);
-        });
-      } else {
-        previewProcess.kill('SIGKILL');
-      }
-      log.info('预览服务器已关闭');
+      staticServer.close();
+      log.info('静态服务器已关闭');
     } catch (err) {
-      log.error(`终止预览服务器进程时出错: ${err}`);
+      log.error(`关闭静态服务器时出错: ${err}`);
     }
   }
 }
@@ -251,10 +400,10 @@ app.whenReady().then(async () => {
   }
 
   try {
-    const port = await startPreviewServer();
-    log.info(`预览服务器已启动在端口 ${port}，准备创建窗口`);
+    const port = await startStaticServer();
+    log.info(`静态服务器已启动在端口 ${port}，准备创建窗口`);
   } catch (err) {
-    log.error('启动预览服务器失败:', err);
+    log.error('启动静态服务器失败:', err);
     global.previewPort = '3002'; // 使用默认端口
   }
 
