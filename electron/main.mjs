@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, globalShortcut, protocol } from 'electron';
+import { app, BrowserWindow, Menu, Tray, globalShortcut, protocol, ipcMain, dialog } from 'electron';
 import path from 'path';
 import { fork, exec } from 'child_process';
 import logPkg from 'electron-log';
@@ -9,7 +9,9 @@ import dotenv from 'dotenv';
 // 引入创建静态服务器所需的模块
 import http from 'http';
 import { createReadStream } from 'fs';
-
+// 引入自动更新模块
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
 // 获取 __dirname 等效
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +24,98 @@ let loadingWindow; // 新增加载窗口
 let tray;
 let isAlwaysOnTop = false;
 let staticServer; // 静态服务器实例
+
+// 配置自动更新
+function setupAutoUpdater() {
+  // 配置日志
+  autoUpdater.logger = log;
+  autoUpdater.logger.transports.file.level = 'info';
+  log.info('自动更新已配置');
+
+  autoUpdater.on('error', (error) => {
+    log.error('更新检查失败', error);
+  });
+
+  // 检测到新版本
+  autoUpdater.on('update-available', (info) => {
+    log.info('发现新版本:', info);
+    if (app.isPackaged && mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: '有可用更新',
+        message: `发现新版本 ${info.version}，正在下载...`,
+        detail: '下载完成后将自动提示安装'
+      });
+    }
+  });
+
+  // 没有新版本
+  autoUpdater.on('update-not-available', (info) => {
+    log.info('当前已是最新版本:', info);
+    // 可选：如果是手动检查，则显示对话框
+    if (global.isManualCheck && app.isPackaged && mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: '无可用更新',
+        message: '您当前使用的已经是最新版本'
+      });
+      global.isManualCheck = false;
+    }
+  });
+
+  // 下载进度 - 在主进程中记录日志，但不显示给用户
+  autoUpdater.on('download-progress', (progressObj) => {
+    let logMessage = `下载速度: ${progressObj.bytesPerSecond} - 已下载 ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`;
+    log.info(logMessage);
+  });
+
+  // 下载完成，准备安装
+  autoUpdater.on('update-downloaded', (info) => {
+    log.info('更新已下载，准备安装:', info);
+    
+    if (app.isPackaged && mainWindow) {
+      // 显示安装对话框
+      const dialogOpts = {
+        type: 'info',
+        buttons: ['立即重启', '稍后'],
+        title: '应用更新',
+        message: '发现新版本并已下载完成，重启应用以完成更新。',
+        detail: `新版本: ${info.version}`
+      };
+
+      dialog.showMessageBox(mainWindow, dialogOpts).then(({ response }) => {
+        if (response === 0) {
+          autoUpdater.quitAndInstall();
+        }
+      });
+    }
+  });
+
+  // 添加托盘菜单选项，用于检查更新
+  ipcMain.handle('check-for-updates', () => {
+    if (app.isPackaged) {
+      log.info('手动检查更新');
+      global.isManualCheck = true; // 标记为手动检查
+      autoUpdater.checkForUpdates();
+    } else {
+      log.info('开发环境不检查更新');
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: '开发模式',
+        message: '开发模式下不检查更新'
+      });
+    }
+  });
+
+  // 自动检查更新
+  if (app.isPackaged) {
+    // 延迟几秒后检查更新，让应用先启动起来
+    setTimeout(() => {
+      log.info('自动检查更新');
+      autoUpdater.checkForUpdates();
+    }, 5000);
+  }
+}
 
 // 加载环境变量（注意：打包后 .env 文件应放置在 extraResources 中的 service 目录内）
 function loadEnv() {
@@ -38,11 +132,12 @@ function loadEnv() {
 
 // 获取图标路径时使用正确的根路径
 function getIconPath() {
-  const iconCandidates = [
+  const iconCandidates = !app.isPackaged ? [
     path.join(__dirname, './build/icon.png'),
-    path.join(__dirname, './build/icon.ico'),
-    path.join(__dirname, 'assets/icon.png'),
-    path.join(__dirname, 'icon.png'),
+    path.join(__dirname, './build/icon.ico')
+  ] : [
+    path.join(process.resourcesPath, 'icon', 'icon.png'),
+    path.join(process.resourcesPath, 'icon', 'icon.ico')
   ];
   for (const iconPath of iconCandidates) {
     if (fs.existsSync(iconPath)) return iconPath;
@@ -396,6 +491,12 @@ function createTray() {
   tray = new Tray(iconPath);
   const contextMenu = Menu.buildFromTemplate([
     { label: '显示主界面', click: () => { if (mainWindow) mainWindow.show(); } },
+    { label: '检查更新', click: () => { 
+      if (mainWindow) {
+        global.isManualCheck = true;
+        autoUpdater.checkForUpdates();
+      } 
+    }},
     { type: 'separator' },
     { label: '退出', click: () => { app.quit(); } }
   ]);
@@ -569,6 +670,72 @@ async function ensureNodeDependencies() {
   }
 }
 
+// 在createWindow函数后面添加创建应用菜单的函数
+function createAppMenu() {
+  const template = [
+    {
+      label: '文件',
+      submenu: [
+        { role: 'quit', label: '退出' }
+      ]
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo', label: '撤销' },
+        { role: 'redo', label: '重做' },
+        { type: 'separator' },
+        { role: 'cut', label: '剪切' },
+        { role: 'copy', label: '复制' },
+        { role: 'paste', label: '粘贴' },
+        { role: 'delete', label: '删除' },
+        { role: 'selectAll', label: '全选' }
+      ]
+    },
+    {
+      label: '视图',
+      submenu: [
+        { role: 'reload', label: '刷新' },
+        { role: 'forceReload', label: '强制刷新' },
+        { role: 'toggleDevTools', label: '开发者工具' },
+        { type: 'separator' },
+        { role: 'resetZoom', label: '重置缩放' },
+        { role: 'zoomIn', label: '放大' },
+        { role: 'zoomOut', label: '缩小' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: '全屏' }
+      ]
+    },
+    {
+      label: '帮助',
+      submenu: [
+        {
+          label: '检查更新',
+          click: () => {
+            global.isManualCheck = true;
+            autoUpdater.checkForUpdates();
+          }
+        },
+        { type: 'separator' },
+        {
+          label: '关于',
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: '关于',
+              message: app.name,
+              detail: `版本: ${app.getVersion()}\n描述: Her.AI Alpha Application inspired by Steins;Gate 0`
+            });
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
 // 应用启动流程
 app.whenReady().then(async () => {
   loadEnv();
@@ -611,6 +778,10 @@ app.whenReady().then(async () => {
     updateLoadingStatus('正在加载应用界面...');
     createWindow();
     createTray();
+    createAppMenu(); // 添加创建应用菜单
+    
+    // 设置自动更新
+    setupAutoUpdater();
     
     // 加载应用URL
     mainWindow.loadURL(`http://127.0.0.1:3002`);
@@ -628,6 +799,10 @@ app.whenReady().then(async () => {
       createWindow(); // 仍然创建窗口，但可能无法正常工作
       mainWindow.loadURL(`http://127.0.0.1:3002`);
       createTray();
+      createAppMenu(); // 添加创建应用菜单
+      
+      // 设置自动更新
+      setupAutoUpdater();
     }, 5000);
   }
 
