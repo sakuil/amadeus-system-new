@@ -54,7 +54,7 @@ C:\Users\你的用户名\AppData\Local\Programs\Amadeus\resources\service\\.env
 
 1. 点击上方的 "Deploy to Zeabur" 按钮
 2. 如果你还没有 Zeabur 账号，需要先[注册](https://zeabur.com?referralCode=aipoet)。需要花费$5开通Developer计划,可使用WildCard虚拟信用卡开通,也可直接使用支付宝充值余额支付。
-3. 点击上方按钮一键部署到香港AWS Tokyo区域，等待部署完成，然后如下图，填写环境变量，最后再点击Networking，生成域名，你就可以通过 Zeabur 提供的域名访问你的应用了
+3. 点击上方按钮一键部署到AWS香港区域，等待部署完成，然后如下图，填写环境变量，最后再点击Networking，生成域名，你就可以通过 Zeabur 提供的域名访问你的应用了
 
 
 #### 环境变量配置说明
