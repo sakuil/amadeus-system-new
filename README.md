@@ -41,7 +41,7 @@
 C:\Users\你的用户名\AppData\Local\Programs\Amadeus
 
 ### 客户端内置服务的配置文件路径
-C:\Users\你的用户名\AppData\Local\Programs\Amadeus\resources\service\.env 
+C:\Users\你的用户名\AppData\Local\Programs\Amadeus\resources\service\\.env 
 可以修改客户端使用的WEBRTC服务器地址
 
 本地客户端提供与Zeabur在线版本相同的功能，但无需服务器部署，适合个人使用。
