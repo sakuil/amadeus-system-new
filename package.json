@@ -82,8 +82,14 @@
         "from": "service/",
         "to": "service",
         "filter": [
-          "**/*",
           "!node_modules/**"
+        ]
+      },
+      {
+        "from": "dist/",
+        "to": "dist",
+        "filter": [
+          "!win-unpacked/**"
         ]
       }
     ],

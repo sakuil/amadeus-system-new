@@ -91,6 +91,17 @@ const Live2dModel: React.FC<Live2dModelProps> = observer(({ role, onModelReady }
       updateFn.call(model.internalModel.motionManager, model.internalModel.coreModel, Date.now() / 1000)
     }
     animation(new Date().getTime(), model);
+    window.onresize = () => {
+      if (!isMobile) {
+        model.scale.set(config.scale1);
+        model.y = config.y1;
+        model.x = config.x1 + (window.innerWidth - 1620) / 2;
+      } else {
+        model.scale.set(roleConfig.scale2);
+        model.y = roleConfig.y2;
+        model.x = roleConfig.x2 + (window.innerWidth - 380) / 2;
+      }
+    }
     setTimeout(() => {
       onModelReady?.();
     }, 3000);

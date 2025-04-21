@@ -6,6 +6,9 @@ const log = logPkg.default || logPkg;
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+// 引入创建静态服务器所需的模块
+import http from 'http';
+import { createReadStream } from 'fs';
 
 // 获取 __dirname 等效
 const __filename = fileURLToPath(import.meta.url);
@@ -15,14 +18,13 @@ const __dirname = path.dirname(__filename);
 const rootPath = app.isPackaged ? process.resourcesPath : __dirname;
 
 let mainWindow;
+let loadingWindow; // 新增加载窗口
 let tray;
 let isAlwaysOnTop = false;
-let previewProcess; // 存储预览服务进程
+let staticServer; // 静态服务器实例
 
 // 加载环境变量（注意：打包后 .env 文件应放置在 extraResources 中的 service 目录内）
 function loadEnv() {
-  const cfgDir = path.join(app.getPath('userData'), 'config');
-  const userEnv = path.join(cfgDir, '.env');
   let defaultEnv;
   if (app.isPackaged) {
     // 打包后，我们把 service 目录作为 extraResources 打包到 resources 目录
@@ -30,12 +32,8 @@ function loadEnv() {
   } else {
     defaultEnv = path.resolve(__dirname, '../service/.env');
   }
-  
-  if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
-  if (!fs.existsSync(userEnv) && fs.existsSync(defaultEnv)) {
-    fs.copyFileSync(defaultEnv, userEnv);
-  }
-  dotenv.config({ path: userEnv });
+  log.info(`加载环境变量: ${defaultEnv}`);
+  dotenv.config({ path: defaultEnv });
 }
 
 // 获取图标路径时使用正确的根路径
@@ -52,49 +50,288 @@ function getIconPath() {
   return undefined;
 }
 
-// 启动预览服务器（注意：打包后请确保 service 目录已经包含预览服务所需文件）
-function startPreviewServer() {
+// 创建一个简单的 MIME 类型映射
+const mimeTypes = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.otf': 'font/otf',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav'
+};
+
+// 替换 mime.lookup 函数
+function getMimeType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return mimeTypes[ext] || 'application/octet-stream';
+}
+
+// 启动静态文件服务器
+function startStaticServer() {
   return new Promise((resolve, reject) => {
-    log.info('正在启动preview服务器...');
+    log.info('正在启动静态服务器...');
+    
+    // 确定静态文件目录路径
+    const distPath = app.isPackaged 
+      ? path.join(process.resourcesPath, 'dist') 
+      : path.join(__dirname, '../dist');
+    
+    // 默认端口
+    const PORT = 4173;
+    
+    // 创建HTTP服务器
+    staticServer = http.createServer((req, res) => {
+      // 解析请求URL路径
+      let urlPath = req.url;
       
-    previewProcess = exec('pnpm preview', {
-      cwd: path.join(__dirname, '..'),
-      env: { ...process.env, NODE_ENV: 'production' }
-    });
-    
-    previewProcess.stdout.on('data', (data) => {
-      log.info(`预览服务器输出: ${data}`);
-      // 检测实际的端口号
-      if (data.includes('http://localhost:') || data.includes('Local:   http://localhost:')) {
-        // 从输出中提取端口号
-        const portMatch = data.match(/localhost:(\d+)/);
-        if (portMatch && portMatch[1]) {
-          const port = portMatch[1];
-          log.info(`预览服务器实际端口: ${port}`);
-          resolve(port);
+      // 如果URL是根路径或者不存在，默认提供index.html
+      if (urlPath === '/' || urlPath === '') {
+        urlPath = '/index.html';
+      }
+      
+      // 构建文件的完整路径
+      const filePath = path.join(distPath, urlPath);
+      
+      // 检查文件是否存在
+      fs.access(filePath, fs.constants.R_OK, (err) => {
+        if (err) {
+          // 如果文件不存在，提供index.html（支持单页应用的路由）
+          if (err.code === 'ENOENT') {
+            const indexPath = path.join(distPath, 'index.html');
+            
+            // 再次检查index.html是否存在
+            fs.access(indexPath, fs.constants.R_OK, (err) => {
+              if (err) {
+                res.writeHead(404);
+                res.end('Not found');
+                return;
+              }
+              
+              // 设置内容类型
+              res.setHeader('Content-Type', 'text/html');
+              
+              // 流式传输文件内容
+              const fileStream = createReadStream(indexPath);
+              fileStream.pipe(res);
+              
+              fileStream.on('error', (error) => {
+                log.error(`文件读取错误: ${error}`);
+                res.writeHead(500);
+                res.end('Internal server error');
+              });
+            });
+            return;
+          }
+          
+          // 其他错误
+          res.writeHead(500);
+          res.end('Internal server error');
+          return;
         }
+        
+        // 确定文件的MIME类型
+        const contentType = getMimeType(filePath);
+        res.setHeader('Content-Type', contentType);
+        
+        // 流式传输文件内容
+        const fileStream = createReadStream(filePath);
+        fileStream.pipe(res);
+        
+        fileStream.on('error', (error) => {
+          log.error(`文件读取错误: ${error}`);
+          res.writeHead(500);
+          res.end('Internal server error');
+        });
+      });
+    });
+    
+    // 监听错误
+    staticServer.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        log.warn(`端口 ${PORT} 已被占用，尝试其他端口`);
+        // 端口被占用，可以在这里尝试使用其他端口
+        const alternativePorts = [5173, 8080, 8000, 3000];
+        tryAlternativePorts(alternativePorts, 0, distPath, resolve, reject);
+      } else {
+        log.error(`静态服务器错误: ${err}`);
+        reject(err);
       }
     });
     
-    previewProcess.stderr.on('data', (data) => {
-      log.error(`预览服务器错误: ${data}`);
-    });
-    
-    setTimeout(() => {
-      log.info('预览服务器可能已启动，使用默认端口3002');
-      if (!global.previewPort) {
-        global.previewPort = '3002';
-      }
-      resolve(global.previewPort);
-    }, 8000); // 增加超时时间
-    
-    previewProcess.on('error', (err) => {
-      log.error(`无法启动预览服务器: ${err}`);
-      reject(err);
+    // 启动服务器
+    staticServer.listen(PORT, '127.0.0.1', () => {
+      global.previewPort = PORT.toString();
+      log.info(`静态服务器已启动在端口 ${PORT}，为目录 ${distPath} 提供服务`);
+      resolve(PORT.toString());
     });
   });
 }
 
+// 尝试备用端口
+function tryAlternativePorts(ports, index, distPath, resolve, reject) {
+  if (index >= ports.length) {
+    reject(new Error('所有备用端口都被占用'));
+    return;
+  }
+  
+  const PORT = ports[index];
+  
+  // 关闭之前的服务器实例
+  if (staticServer) {
+    staticServer.close();
+  }
+  
+  // 创建新的服务器实例
+  staticServer = http.createServer((req, res) => {
+    // 解析请求URL路径
+    let urlPath = req.url;
+    
+    // 如果URL是根路径或者不存在，默认提供index.html
+    if (urlPath === '/' || urlPath === '') {
+      urlPath = '/index.html';
+    }
+    
+    // 构建文件的完整路径
+    const filePath = path.join(distPath, urlPath);
+    
+    // 检查文件是否存在
+    fs.access(filePath, fs.constants.R_OK, (err) => {
+      if (err) {
+        // 如果文件不存在，提供index.html（支持单页应用的路由）
+        if (err.code === 'ENOENT') {
+          const indexPath = path.join(distPath, 'index.html');
+          
+          // 再次检查index.html是否存在
+          fs.access(indexPath, fs.constants.R_OK, (err) => {
+            if (err) {
+              res.writeHead(404);
+              res.end('Not found');
+              return;
+            }
+            
+            // 设置内容类型
+            res.setHeader('Content-Type', 'text/html');
+            
+            // 流式传输文件内容
+            const fileStream = createReadStream(indexPath);
+            fileStream.pipe(res);
+            
+            fileStream.on('error', (error) => {
+              log.error(`文件读取错误: ${error}`);
+              res.writeHead(500);
+              res.end('Internal server error');
+            });
+          });
+          return;
+        }
+        
+        // 其他错误
+        res.writeHead(500);
+        res.end('Internal server error');
+        return;
+      }
+      
+      // 确定文件的MIME类型
+      const contentType = getMimeType(filePath);
+      res.setHeader('Content-Type', contentType);
+      
+      // 流式传输文件内容
+      const fileStream = createReadStream(filePath);
+      fileStream.pipe(res);
+      
+      fileStream.on('error', (error) => {
+        log.error(`文件读取错误: ${error}`);
+        res.writeHead(500);
+        res.end('Internal server error');
+      });
+    });
+  });
+  
+  staticServer.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      log.warn(`备用端口 ${PORT} 也被占用，尝试下一个端口`);
+      tryAlternativePorts(ports, index + 1, distPath, resolve, reject);
+    } else {
+      reject(err);
+    }
+  });
+  
+  staticServer.listen(PORT, '127.0.0.1', () => {
+    global.previewPort = PORT.toString();
+    log.info(`静态服务器已启动在备用端口 ${PORT}，为目录 ${distPath} 提供服务`);
+    resolve(PORT.toString());
+  });
+}
+
+// 创建加载窗口
+function createLoadingWindow() {
+  loadingWindow = new BrowserWindow({
+    width: 500,
+    height: 400,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  });
+
+  // 加载HTML文件
+  const loadingHtmlPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'electron', 'loading.html')
+    : path.join(__dirname, 'loading.html');
+  
+  // 检查文件是否存在
+  if (fs.existsSync(loadingHtmlPath)) {
+    loadingWindow.loadFile(loadingHtmlPath);
+  } else {
+    // 如果文件不存在，创建一个简单的备用加载界面
+    const tempPath = path.join(app.getPath('temp'), 'loading.html');
+    fs.writeFileSync(tempPath, `
+      <html>
+        <body style="background: #0a0f1e; color: white; font-family: Arial; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0;">
+          <div style="text-align: center;">
+            <h2>AMADEUS SYSTEM</h2>
+            <p id="status">正在初始化系统...</p>
+            <script>
+              const { ipcRenderer } = require('electron');
+              ipcRenderer.on('loading-status', (event, message) => {
+                document.getElementById('status').innerText = message;
+              });
+            </script>
+          </div>
+        </body>
+      </html>
+    `);
+    loadingWindow.loadFile(tempPath);
+  }
+  
+  loadingWindow.center();
+  return loadingWindow;
+}
+
+// 更新加载状态
+function updateLoadingStatus(message) {
+  if (loadingWindow && !loadingWindow.isDestroyed()) {
+    loadingWindow.webContents.send('loading-status', message);
+  }
+}
+
+// 创建主窗口
 function createWindow() {
   const windowOptions = {
     width: 1200,
@@ -102,6 +339,7 @@ function createWindow() {
     minWidth: 400,
     minHeight: 500,
     resizable: true,
+    show: false, // 初始不显示，等加载完成后显示
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -115,10 +353,14 @@ function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions);
 
-  // 使用实际检测到的端口，默认为3002
-  const port = global.previewPort || '3002';
-  mainWindow.loadURL(`http://127.0.0.1:${port}`);
-  
+  // 等待页面加载完成后再显示
+  mainWindow.once('ready-to-show', () => {
+    if (loadingWindow && !loadingWindow.isDestroyed()) {
+      loadingWindow.close();
+    }
+    mainWindow.show();
+  });
+
   // 处理加载错误
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     log.error(`页面加载失败: ${errorDescription} (${errorCode})`);
@@ -172,16 +414,73 @@ const nodeServerPath = app.isPackaged
   ? path.join(process.resourcesPath, 'service', 'build', 'index.mjs')
   : path.join(__dirname, '../service/build/index.mjs');
 
-// 确保可以正确fork ESM模块
-const nodeProcess = fork(nodeServerPath, [], { 
-  stdio: 'inherit',
-  // ESM兼容性选项
-  execArgv: ['--experimental-specifier-resolution=node'],
-  cwd: app.isPackaged 
-    ? path.join(process.resourcesPath, 'service')
-    : path.resolve(__dirname, '../service'),
-  env: { ...process.env, NODE_ENV: 'production' },
-});
+// 启动 Node 服务并返回 Promise
+function startNodeService() {
+  return new Promise((resolve, reject) => {
+    log.info('正在启动 Node 服务...');
+    log.info(`cwd: ${app.isPackaged ? path.join(process.resourcesPath, 'service') : path.resolve(__dirname, '../service')}`);
+    // 确保可以正确fork ESM模块
+    const nodeProcess = fork(nodeServerPath, [], { 
+      stdio: 'inherit',
+      execArgv: ['--experimental-specifier-resolution=node'],
+      cwd: app.isPackaged 
+        ? path.join(process.resourcesPath, 'service')
+        : path.resolve(__dirname, '../service'),
+      env: { ...process.env, NODE_ENV: 'production' },
+    });
+    
+    // 检查服务是否已经启动
+    const checkServiceAvailable = async () => {
+      try {
+        // 尝试连接到服务，不关心响应状态码
+        await fetch('http://127.0.0.1:3002/', { 
+          method: 'GET',
+          timeout: 1000
+        });
+        
+        // 只要没有抛出异常，就表示服务已响应
+        log.info('Node 服务已响应请求，视为已启动');
+        clearTimeout(timeout);
+        resolve(nodeProcess);
+        return true;
+      } catch (err) {
+        // 连接失败，服务可能还未启动
+        return false;
+      }
+    };
+    
+    // 定期检查服务是否可用
+    const checkInterval = setInterval(async () => {
+      const isAvailable = await checkServiceAvailable();
+      if (isAvailable) {
+        clearInterval(checkInterval);
+      }
+    }, 2000); // 每2秒检查一次
+    
+    // 设置超时
+    const timeout = setTimeout(() => {
+      log.warn('Node 服务启动超时，继续执行');
+      clearInterval(checkInterval);
+      resolve(nodeProcess);
+    }, 10000); // 10秒超时
+    
+    nodeProcess.on('error', (err) => {
+      clearTimeout(timeout);
+      clearInterval(checkInterval);
+      log.error(`Node 服务启动错误: ${err}`);
+      reject(err);
+    });
+    
+    nodeProcess.on('exit', (code) => {
+      if (code !== 0 && code !== null) {
+        clearTimeout(timeout);
+        clearInterval(checkInterval);
+        log.error(`Node 服务异常退出，退出码: ${code}`);
+        reject(new Error(`Node 服务异常退出，退出码: ${code}`));
+      }
+    });
+  });
+}
 
 // 添加全局错误处理
 process.on('uncaughtException', (error) => {
@@ -199,41 +498,84 @@ function cleanupProcesses() {
   log.info('开始清理子进程...');
   
   // 关闭 Node 服务进程
-  if (nodeProcess) {
+  if (global.nodeProcess) {
     try {
       if (process.platform === 'win32') {
-        exec(`taskkill /pid ${nodeProcess.pid} /T /F`, (error) => {
+        exec(`taskkill /pid ${global.nodeProcess.pid} /T /F`, (error) => {
           if (error) log.error(`终止Node服务进程失败: ${error}`);
-          else log.info(`成功终止Node服务进程: ${nodeProcess.pid}`);
+          else log.info(`成功终止Node服务进程: ${global.nodeProcess.pid}`);
         });
       } else {
-        nodeProcess.kill('SIGKILL');
+        global.nodeProcess.kill('SIGKILL');
       }
     } catch (err) {
       log.error(`终止Node服务进程时出错: ${err}`);
     }
   }
   
-  // 关闭预览服务器
-  if (previewProcess) {
+  // 关闭静态服务器
+  if (staticServer) {
     try {
-      if (process.platform === 'win32') {
-        exec(`taskkill /pid ${previewProcess.pid} /T /F`, (error) => {
-          if (error) log.error(`终止预览服务器进程失败: ${error}`);
-          else log.info(`成功终止预览服务器进程: ${previewProcess.pid}`);
-        });
-      } else {
-        previewProcess.kill('SIGKILL');
-      }
-      log.info('预览服务器已关闭');
+      staticServer.close();
+      log.info('静态服务器已关闭');
     } catch (err) {
-      log.error(`终止预览服务器进程时出错: ${err}`);
+      log.error(`关闭静态服务器时出错: ${err}`);
     }
   }
 }
 
+// 确保Node依赖已安装
+async function ensureNodeDependencies() {
+  if (!app.isPackaged) return; // 开发环境不需要
+  
+  const serviceDir = path.join(process.resourcesPath, 'service');
+  const nodeModulesDir = path.join(serviceDir, 'node_modules');
+  
+  // 检查 node_modules 是否存在
+  if (!fs.existsSync(nodeModulesDir) || !fs.existsSync(path.join(nodeModulesDir, 'express'))) {
+    updateLoadingStatus('正在安装服务依赖，这可能需要几分钟...');
+    log.info('正在安装 Node 服务依赖...');
+    
+    return new Promise((resolve, reject) => {
+      const npmInstall = exec('npm install --production', {
+        cwd: serviceDir
+      });
+      
+      npmInstall.stdout.on('data', (data) => {
+        const message = data.toString().trim();
+        log.info(`npm install 输出: ${message}`);
+        updateLoadingStatus(`安装中: ${message}`);
+      });
+      
+      npmInstall.stderr.on('data', (data) => {
+        const message = data.toString().trim();
+        log.warn(`npm install 警告: ${message}`);
+        updateLoadingStatus(`安装中: ${message}`);
+      });
+      
+      npmInstall.on('close', (code) => {
+        if (code === 0) {
+          log.info('Node 服务依赖安装成功');
+          updateLoadingStatus('依赖安装完成，正在启动服务...');
+          resolve();
+        } else {
+          const error = new Error(`依赖安装失败，退出码: ${code}`);
+          log.error(error);
+          updateLoadingStatus(`依赖安装失败: 退出码 ${code}`);
+          reject(error);
+        }
+      });
+    });
+  }
+}
+
+// 应用启动流程
 app.whenReady().then(async () => {
   loadEnv();
+  
+  // 创建加载窗口
+  createLoadingWindow();
+  
   // 注册协议处理程序
   if (app.isPackaged) {
     app.on('web-contents-created', (e, contents) => {
@@ -251,15 +593,43 @@ app.whenReady().then(async () => {
   }
 
   try {
-    const port = await startPreviewServer();
-    log.info(`预览服务器已启动在端口 ${port}，准备创建窗口`);
+    // 确保依赖已安装
+    updateLoadingStatus('正在检查依赖...');
+    await ensureNodeDependencies();
+    
+    // 启动静态服务器
+    updateLoadingStatus('正在启动静态服务器...');
+    const port = await startStaticServer();
+    log.info(`静态服务器已启动在端口 ${port}`);
+    
+    // 启动 Node 服务
+    updateLoadingStatus('正在启动应用服务...');
+    global.nodeProcess = await startNodeService();
+    log.info('Node 服务已成功启动，准备创建窗口');
+    
+    // 创建主窗口并加载 URL
+    updateLoadingStatus('正在加载应用界面...');
+    createWindow();
+    createTray();
+    
+    // 加载应用URL
+    mainWindow.loadURL(`http://127.0.0.1:3002`);
   } catch (err) {
-    log.error('启动预览服务器失败:', err);
-    global.previewPort = '3002'; // 使用默认端口
+    log.error('启动服务失败:', err);
+    updateLoadingStatus(`启动失败: ${err.message}`);
+    
+    // 等待几秒钟让用户看到错误信息
+    setTimeout(() => {
+      if (loadingWindow && !loadingWindow.isDestroyed()) {
+        loadingWindow.close();
+      }
+      
+      global.previewPort = '3002'; // 使用默认端口
+      createWindow(); // 仍然创建窗口，但可能无法正常工作
+      mainWindow.loadURL(`http://127.0.0.1:3002`);
+      createTray();
+    }, 5000);
   }
-
-  createWindow();
-  createTray();
 
   // 注册全局快捷键
   globalShortcut.register('CommandOrControl+Shift+D', () => {
@@ -285,6 +655,11 @@ app.whenReady().then(async () => {
 }).catch(err => {
   console.error('应用启动错误:', err);
   log.error('应用启动错误:', err);
+  
+  if (loadingWindow && !loadingWindow.isDestroyed()) {
+    loadingWindow.webContents.send('loading-status', `启动错误: ${err.message}`);
+    setTimeout(() => loadingWindow.close(), 5000);
+  }
 });
 
 app.on('will-quit', () => {
