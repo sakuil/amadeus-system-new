@@ -54,7 +54,7 @@ export const useConfigPanel = (open: boolean, onOpenChange: (open: boolean) => v
     whisper_api_key: '',
     siliconflow_api_key: '',
     llm_base_url: '',
-    llm_base_url_type: 'aihubmix',
+    llm_base_url_type: 'amadeus-web',
     whisper_base_url: '',
     whisper_base_url_type: 'aihubmix',
     whisper_model: 'whisper-large-v3',

@@ -193,6 +193,12 @@ const ConfigPanel = ({ open, onOpenChange, onSave }: ConfigPanelProps): JSX.Elem
                     <Brain className="h-5 w-5 text-primary" />
                     <h4 className="text-md font-medium">LLM 配置</h4>
                   </div>
+                  <Alert variant="info" className="mb-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="text-xs sm:text-sm">
+                      接口遵循OpenAI标准格式，可使用任何兼容OpenAI API的服务
+                    </AlertDescription>
+                  </Alert>
                   <div className="grid gap-4">
                     <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
                       <Label className="sm:text-right">LLM API 密钥:</Label>
@@ -334,6 +340,12 @@ const ConfigPanel = ({ open, onOpenChange, onSave }: ConfigPanelProps): JSX.Elem
                     <Mic className="h-5 w-5 text-primary" />
                     <h4 className="text-md font-medium">ASR 语音识别设置</h4>
                   </div>
+                  <Alert variant="info" className="mb-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="text-xs sm:text-sm">
+                      接口遵循OpenAI标准格式，可使用任何兼容OpenAI Whisper API的服务
+                    </AlertDescription>
+                  </Alert>
                   <div className="grid gap-4">
                     <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
                       <Label className="sm:text-right">ASR API 密钥:</Label>
@@ -396,6 +408,7 @@ const ConfigPanel = ({ open, onOpenChange, onSave }: ConfigPanelProps): JSX.Elem
                         <SelectContent>
                           <SelectItem value="whisper-large-v3">whisper-large-v3</SelectItem>
                           <SelectItem value="whisper-large-v3-turbo">whisper-large-v3-turbo</SelectItem>
+                          <SelectItem value="whisper-1">whisper-1</SelectItem>
                           <SelectItem value="custom">自定义</SelectItem>
                         </SelectContent>
                       </Select>
