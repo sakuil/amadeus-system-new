@@ -3,6 +3,7 @@ import express from 'express'
 import cors from 'cors'
 import * as dotenv from 'dotenv'
 import { createProxyMiddleware, Filter } from 'http-proxy-middleware'
+import voiceCloneRoutes from './routes/voiceCloneRoutes'
 
 const app = express()
 app.use(cors())
@@ -14,6 +15,8 @@ app.set('trust proxy', true)
 // 配置WebRTC API服务地址，从环境变量中获取
 const WEBRTC_API_URL = process.env.WEBRTC_API_URL
 console.log(`WebRTC API代理目标: ${WEBRTC_API_URL}`)
+
+app.use('/node/api/voice-clone', voiceCloneRoutes)
 
 // 添加代理配置，将/api前缀的请求统一转发到Python FastAPI服务
 app.use('/api', createProxyMiddleware({
@@ -40,7 +43,7 @@ app.use('/api', createProxyMiddleware({
 // 只在生产环境下代理前端请求
 if (process.env.NODE_ENV === 'production') {
   const filter: Filter = (pathname: string) => {
-    return !pathname.startsWith('/api')
+    return !pathname.startsWith('/api') && !pathname.startsWith('/node/api')
   }
   app.use('/', createProxyMiddleware(filter, {
     target: 'http://127.0.0.1:4173',
