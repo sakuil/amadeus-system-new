@@ -638,7 +638,7 @@ async function ensureNodeDependencies() {
     log.info('正在安装 Node 服务依赖...');
     
     return new Promise((resolve, reject) => {
-      const npmInstall = exec('npm install --production', {
+      const npmInstall = exec('npm install --production --registry=https://registry.npmmirror.com', {
         cwd: serviceDir
       });
       

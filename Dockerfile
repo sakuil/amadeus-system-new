@@ -2,8 +2,7 @@
 FROM node:18-alpine
 
 # 安装必要的工具 - 使用国内镜像加速
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
-    apk update && \
+RUN apk update && \
     apk add --no-cache python3 make g++ git
 
 # 全局安装 pnpm 和 pm2 - 使用国内镜像

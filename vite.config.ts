@@ -19,6 +19,10 @@ export default defineConfig((env) => {
           target: viteEnv.VITE_APP_API_BASE_URL,
           changeOrigin: true, // 允许跨域
         },
+        '/node/api': {
+          target: viteEnv.VITE_APP_API_BASE_URL,
+          changeOrigin: true, // 允许跨域
+        },
       },
     },
     build: {
