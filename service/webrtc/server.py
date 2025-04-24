@@ -16,7 +16,7 @@ from io import BytesIO  # 用于在内存中处理二进制数据
 from dotenv import load_dotenv  # 用于加载环境变量
 import aiohttp  # 用于异步HTTP请求
 import json  # 用于JSON处理
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Optional
 from openai import OpenAI
 # 导入自定义的工具函数
@@ -26,6 +26,7 @@ from ai.plan import ActionPlanner  # 导入ActionPlanner类
 from stt import transcribe
 from tts import text_to_speech_stream
 from routes import router, init_router, get_user_config, InputData  # 导入路由模块及用户配置
+from contextlib import asynccontextmanager
 
 # 加载默认环境变量（作为备用）
 load_dotenv()
@@ -49,14 +50,48 @@ DEFAULT_TEXT_OUTPUT_LANGUAGE = 'zh'
 DEFAULT_SYSTEM_PROMPT = """命运石之门(steins gate)的牧濑红莉栖(kurisu),一个天才少女,性格傲娇,不喜欢被叫克里斯蒂娜"""
 DEFAULT_USER_NAME = "用户"
 
+# 会话超时设置（30分钟）
+SESSION_TIMEOUT = timedelta(minutes=30)
+# 清理间隔（60秒）
+CLEANUP_INTERVAL = 60
+
 # 用户会话状态字典，存储每个用户的消息、设置等
 user_sessions = {}
+# 用户会话最后活动时间
+user_sessions_last_active = {}
 
 # 初始化OpenAI客户端字典，为每个用户创建一个客户端
 openai_clients = {}
 
+# 异步清理过期会话
+async def cleanup_expired_sessions():
+    while True:
+        try:
+            await asyncio.sleep(CLEANUP_INTERVAL)
+            current_time = time.time()
+            expired_sessions = []
+            
+            # 查找过期会话
+            for webrtc_id, last_active in user_sessions_last_active.items():
+                if current_time - last_active > SESSION_TIMEOUT.total_seconds():
+                    expired_sessions.append(webrtc_id)
+            
+            # 清理过期会话
+            for webrtc_id in expired_sessions:
+                logging.info(f"清理过期会话: {webrtc_id}")
+                user_sessions.pop(webrtc_id, None)
+                user_sessions_last_active.pop(webrtc_id, None)
+                openai_clients.pop(webrtc_id, None)
+                
+            logging.info(f"清理完成，当前活跃会话数: {len(user_sessions)}")
+        except Exception as e:
+            logging.error(f"清理过期会话时出错: {e}")
+
 # 获取用户特定的会话状态
 def get_user_session(webrtc_id: str):
+    # 更新用户最后活动时间
+    user_sessions_last_active[webrtc_id] = time.time()
+    
     if webrtc_id not in user_sessions:
         # 创建新用户的初始会话状态
         config = get_user_config(webrtc_id)
@@ -90,6 +125,9 @@ def get_user_session(webrtc_id: str):
 
 # 获取用户的OpenAI客户端
 def get_user_openai_client(webrtc_id: str):
+    # 更新用户最后活动时间
+    user_sessions_last_active[webrtc_id] = time.time()
+    
     if webrtc_id not in openai_clients:
         config = get_user_config(webrtc_id)
         api_key = config.llm_api_key if config and config.llm_api_key else DEFAULT_LLM_API_KEY
@@ -374,8 +412,21 @@ stream = Stream(reply_handler,
             concurrency_limit=10
         )
 
-# 创建FastAPI应用
-app = fastapi.FastAPI()
+# 使用 lifespan 上下文管理器替代 on_event
+@asynccontextmanager
+async def lifespan(app: fastapi.FastAPI):
+    # 启动时执行的代码
+    cleanup_task = asyncio.create_task(cleanup_expired_sessions())
+    yield
+    # 关闭时执行的代码
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        logging.info("清理任务已取消")
+
+# 创建FastAPI应用，使用lifespan参数
+app = fastapi.FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
