@@ -89,7 +89,7 @@
         "to": "service",
         "filter": [
           "!node_modules/**",
-          "!**/.env"
+          "!webrtc/.env"
         ]
       },
       {
