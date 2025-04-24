@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "build:frontend": "vite build",
     "build:node": "cd service && npm install && npm run build",
-    "build:electron": "pnpm build && pnpm build:api && electron-builder",
+    "build:electron": "pnpm build && pnpm build:api:electron && electron-builder",
     "start:electron": "pnpm build && pnpm build:api && electron electron/main.mjs"
   },
   "dependencies": {
