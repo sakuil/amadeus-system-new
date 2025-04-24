@@ -88,7 +88,8 @@
         "from": "service/",
         "to": "service",
         "filter": [
-          "!node_modules/**"
+          "!node_modules/**",
+          "!**/.env"
         ]
       },
       {
