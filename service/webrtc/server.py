@@ -43,16 +43,18 @@ DEFAULT_WHISPER_BASE_URL = os.getenv("WHISPER_BASE_URL", "https://amadeus-ai-api
 DEFAULT_AI_MODEL = os.getenv("AI_MODEL")
 DEFAULT_WHISPER_MODEL = os.getenv("WHISPER_MODEL", "whisper-large-v3")
 DEFAULT_MEM0_API_KEY = os.getenv("MEM0_API_KEY", "")
+# 添加WebRTC流的时间限制和并发限制环境变量
+DEFAULT_TIME_LIMIT = int(os.getenv("TIME_LIMIT", "600"))
+DEFAULT_CONCURRENCY_LIMIT = int(os.getenv("CONCURRENCY_LIMIT", "10"))
 
 # 设置默认的语言选项和参数
 DEFAULT_VOICE_OUTPUT_LANGUAGE = 'ja'
 DEFAULT_TEXT_OUTPUT_LANGUAGE = 'zh'
 DEFAULT_SYSTEM_PROMPT = """命运石之门(steins gate)的牧濑红莉栖(kurisu),一个天才少女,性格傲娇,不喜欢被叫克里斯蒂娜"""
 DEFAULT_USER_NAME = "用户"
-
-# 会话超时设置（30分钟）
-SESSION_TIMEOUT = timedelta(minutes=30)
-# 清理间隔（60秒）
+# 会话超时设置
+SESSION_TIMEOUT = timedelta(seconds=DEFAULT_TIME_LIMIT)
+# 清理间隔
 CLEANUP_INTERVAL = 60
 
 # 用户会话状态字典，存储每个用户的消息、设置等
@@ -408,8 +410,8 @@ stream = Stream(reply_handler,
             modality="audio",  # 设置模态为音频
             rtc_configuration=rtc_configuration,
             mode="send-receive",  # 设置模式为发送和接收
-            time_limit=600,
-            concurrency_limit=10
+            time_limit=DEFAULT_TIME_LIMIT,
+            concurrency_limit=DEFAULT_CONCURRENCY_LIMIT
         )
 
 # 使用 lifespan 上下文管理器替代 on_event
