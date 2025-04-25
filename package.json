@@ -2,7 +2,7 @@
   "name": "amadeus-system-new-alpha",
   "description": "Her.AI Alpha Application inspired by Steins;Gate 0",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "build:frontend": "vite build",
     "build:node": "cd service && npm install && npm run build",
-    "build:electron": "pnpm build && pnpm build:api && electron-builder",
+    "build:electron": "pnpm build && pnpm build:api:electron && electron-builder",
     "start:electron": "pnpm build && pnpm build:api && electron electron/main.mjs"
   },
   "dependencies": {
@@ -88,7 +88,8 @@
         "from": "service/",
         "to": "service",
         "filter": [
-          "!node_modules/**"
+          "!node_modules/**",
+          "!webrtc/.env"
         ]
       },
       {

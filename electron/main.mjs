@@ -512,7 +512,7 @@ function createTray() {
 // 启动 node 中间层（service/build/index.mjs）
 // 根据是否打包选择正确路径
 const nodeServerPath = app.isPackaged 
-  ? path.join(process.resourcesPath, 'service', 'build', 'index.mjs')
+  ? path.join(process.resourcesPath, 'service', 'build', 'index.js')
   : path.join(__dirname, '../service/build/index.mjs');
 
 // 启动 Node 服务并返回 Promise
@@ -520,6 +520,7 @@ function startNodeService() {
   return new Promise((resolve, reject) => {
     log.info('正在启动 Node 服务...');
     log.info(`cwd: ${app.isPackaged ? path.join(process.resourcesPath, 'service') : path.resolve(__dirname, '../service')}`);
+    log.info(`nodeServerPath: ${nodeServerPath}`);
     // 确保可以正确fork ESM模块
     const nodeProcess = fork(nodeServerPath, [], { 
       stdio: 'inherit',
@@ -564,7 +565,7 @@ function startNodeService() {
       clearInterval(checkInterval);
       resolve(nodeProcess);
     }, 10000); // 10秒超时
-    
+    // 捕获子进程的标准输出
     nodeProcess.on('error', (err) => {
       clearTimeout(timeout);
       clearInterval(checkInterval);
@@ -622,51 +623,6 @@ function cleanupProcesses() {
     } catch (err) {
       log.error(`关闭静态服务器时出错: ${err}`);
     }
-  }
-}
-
-// 确保Node依赖已安装
-async function ensureNodeDependencies() {
-  if (!app.isPackaged) return; // 开发环境不需要
-  
-  const serviceDir = path.join(process.resourcesPath, 'service');
-  const nodeModulesDir = path.join(serviceDir, 'node_modules');
-  
-  // 检查 node_modules 是否存在
-  if (!fs.existsSync(nodeModulesDir) || !fs.existsSync(path.join(nodeModulesDir, 'express'))) {
-    updateLoadingStatus('正在安装服务依赖，这可能需要几分钟...');
-    log.info('正在安装 Node 服务依赖...');
-    
-    return new Promise((resolve, reject) => {
-      const npmInstall = exec('npm install --production --registry=https://registry.npmmirror.com', {
-        cwd: serviceDir
-      });
-      
-      npmInstall.stdout.on('data', (data) => {
-        const message = data.toString().trim();
-        log.info(`npm install 输出: ${message}`);
-        updateLoadingStatus(`安装中: ${message}`);
-      });
-      
-      npmInstall.stderr.on('data', (data) => {
-        const message = data.toString().trim();
-        log.warn(`npm install 警告: ${message}`);
-        updateLoadingStatus(`安装中: ${message}`);
-      });
-      
-      npmInstall.on('close', (code) => {
-        if (code === 0) {
-          log.info('Node 服务依赖安装成功');
-          updateLoadingStatus('依赖安装完成，正在启动服务...');
-          resolve();
-        } else {
-          const error = new Error(`依赖安装失败，退出码: ${code}`);
-          log.error(error);
-          updateLoadingStatus(`依赖安装失败: 退出码 ${code}`);
-          reject(error);
-        }
-      });
-    });
   }
 }
 
@@ -760,10 +716,6 @@ app.whenReady().then(async () => {
   }
 
   try {
-    // 确保依赖已安装
-    updateLoadingStatus('正在检查依赖...');
-    await ensureNodeDependencies();
-    
     // 启动静态服务器
     updateLoadingStatus('正在启动静态服务器...');
     const port = await startStaticServer();
