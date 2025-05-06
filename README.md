@@ -153,7 +153,7 @@ docker run -d --name amadeus-webrtc \
 |---------|------|-------|
 | `LLM_API_KEY` | OpenAI或兼容API的密钥，用于大语言模型服务 | 无 |
 | `WHISPER_API_KEY` | Whisper API密钥，用于语音识别服务 | 无 |
-| `SILICONFLOW_API_KEY` | Fish Audio API密钥，用于语音合成服务 | 无 |
+| `SILICONFLOW_API_KEY` | 硅基流动API密钥，用于语音合成服务 | 无 |
 | `LLM_BASE_URL` | 大语言模型API的基础URL | 无 |
 | `WHISPER_BASE_URL` | Whisper API的基础URL | 无 |
 | `WHISPER_MODEL` | 使用的Whisper模型版本 | 无 |
